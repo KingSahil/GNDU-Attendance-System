@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QR Attendance System</title>
+  <script src="students.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f4f4f4; }
+    input, select { margin: 5px; padding: 8px; }
+    .filters { margin-top: 10px; }
+    .present { background-color: #c8e6c9; }
+  </style>
+</head>
+<body>
+  <h2>QR Code Attendance System</h2>
+
+  <!-- Search bar -->
+  <input type="text" id="search" placeholder="Search by Name or Father Name" onkeyup="renderTable()">
+
+  <!-- Filters -->
+  <div class="filters">
+    <label for="classGroup">Class Group:</label>
+    <select id="classGroup" onchange="renderTable()">
+      <option value="">All</option>
+      <option value="G1">G1</option>
+      <option value="G2">G2</option>
+    </select>
+
+    <label for="labGroup">Lab Group:</label>
+    <select id="labGroup" onchange="renderTable()">
+      <option value="">All</option>
+      <option value="G1">G1</option>
+      <option value="G2">G2</option>
+      <option value="G3">G3</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <table>
+    <thead>
+      <tr>
+        <th>Serial No</th>
+        <th>Student ID</th>
+        <th>Name</th>
+        <th>Father Name</th>
+        <th>Class Group</th>
+        <th>Lab Group</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="studentTable"></tbody>
+  </table>
+
+  <script>
+    let attendance = {};
+
+    function markPresent(id) {
+      attendance[id] = true;
+      renderTable();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("studentTable");
+      const search = document.getElementById("search").value.toLowerCase();
+      const classGroup = document.getElementById("classGroup").value;
+      const labGroup = document.getElementById("labGroup").value;
+
+      tbody.innerHTML = "";
+      students.forEach((student, index) => {
+        const matchSearch = student.name.toLowerCase().includes(search) || student.father.toLowerCase().includes(search);
+        const matchClass = classGroup === "" || student.class_group_no === classGroup;
+        const matchLab = labGroup === "" || student.lab_group_no === labGroup;
+
+        if (matchSearch && matchClass && matchLab) {
+          const row = document.createElement("tr");
+          if (attendance[student.id]) row.classList.add("present");
+          row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${student.id}</td>
+            <td>${student.name}</td>
+            <td>${student.father}</td>
+            <td>${student.class_group_no}</td>
+            <td>${student.lab_group_no}</td>
+            <td>
+              ${attendance[student.id] ? "Present" : `<button onclick="markPresent('${student.id}')">Mark Present</button>`}
+            </td>
+          `;
+          tbody.appendChild(row);
+        }
+      });
+    }
+
+    renderTable();
+  </script>
+</body>
+</html>
