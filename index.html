@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QR Attendance System - Computer Engineering & Technology</title>
   <script src="students.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -122,37 +121,6 @@
       display: none;
     }
 
-    .qr-section {
-      background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 15px;
-      margin-bottom: 30px;
-      text-align: center;
-    }
-
-    .qr-code-container {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      display: inline-block;
-      margin: 20px 0;
-    }
-
-    .qr-info {
-      margin-top: 15px;
-    }
-
-    .qr-url {
-      background: rgba(255,255,255,0.2);
-      padding: 10px;
-      border-radius: 5px;
-      font-family: monospace;
-      font-size: 0.9rem;
-      margin-top: 10px;
-      word-break: break-all;
-    }
-
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -254,17 +222,25 @@
       font-weight: 500;
     }
 
-    .status-present {
-      background: #27ae60;
+    .mark-present-btn {
+      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
       color: white;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 0.85rem;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9rem;
       font-weight: 500;
+      transition: all 0.3s ease;
     }
 
-    .status-absent {
-      background: #e74c3c;
+    .mark-present-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 10px rgba(39, 174, 96, 0.3);
+    }
+
+    .status-present {
+      background: #27ae60;
       color: white;
       padding: 6px 12px;
       border-radius: 20px;
@@ -290,69 +266,6 @@
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 15px;
       font-size: 0.95rem;
-    }
-
-    /* Student Check-in Styles */
-    .checkin-container {
-      max-width: 500px;
-      margin: 50px auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-
-    .checkin-header {
-      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-      color: white;
-      padding: 30px;
-      text-align: center;
-    }
-
-    .checkin-form {
-      padding: 40px;
-    }
-
-    .checkin-form .form-group {
-      margin-bottom: 20px;
-    }
-
-    .checkin-btn {
-      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-      color: white;
-      padding: 15px 30px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
-      transition: all 0.3s ease;
-    }
-
-    .checkin-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
-    }
-
-    .message {
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 20px;
-      text-align: center;
-      font-weight: 600;
-    }
-
-    .success-message {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-
-    .error-message {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
     }
 
     @media (max-width: 768px) {
@@ -381,8 +294,7 @@
   </style>
 </head>
 <body>
-  <!-- Teacher Dashboard -->
-  <div class="container" id="teacherDashboard">
+  <div class="container">
     <div class="header">
       <h1>QR Attendance System</h1>
       <p>Department of Computer Engineering & Technology</p>
@@ -417,18 +329,6 @@
 
     <div class="attendance-section" id="attendanceSection">
       <div class="current-class-info" id="classInfo"></div>
-      
-      <div class="qr-section">
-        <h3>📱 Student Check-in QR Code</h3>
-        <p>Students can scan this QR code to mark their attendance</p>
-        <div class="qr-code-container">
-          <canvas id="qrcode"></canvas>
-        </div>
-        <div class="qr-info">
-          <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
-          <div class="qr-url" id="qrUrl"></div>
-        </div>
-      </div>
       
       <div class="stats" id="statsSection">
         <div class="stat-card">
@@ -485,7 +385,6 @@
               <th>Class Group</th>
               <th>Lab Group</th>
               <th>Status</th>
-              <th>Check-in Time</th>
             </tr>
           </thead>
           <tbody id="studentTable"></tbody>
@@ -494,33 +393,11 @@
     </div>
   </div>
 
-  <!-- Student Check-in Interface -->
-  <div class="checkin-container" id="studentCheckin" style="display: none;">
-    <div class="checkin-header">
-      <h2>✓ Mark Attendance</h2>
-      <p id="checkinClassInfo"></p>
-    </div>
-    <div class="checkin-form">
-      <div class="form-group">
-        <label for="studentId">Student ID</label>
-        <input type="text" id="studentId" placeholder="Enter your Student ID" required>
-      </div>
-      <div class="form-group">
-        <label for="studentName">Full Name</label>
-        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
-      </div>
-      <button class="checkin-btn" onclick="submitAttendance()">Mark Me Present</button>
-      <div id="checkinMessage"></div>
-    </div>
-  </div>
-
   <script>
     let attendance = {};
-    let attendanceTime = {};
     let currentSession = null;
-    let sessionId = null;
 
-    // Timetable data for automatic teacher assignment
+    // Timetable data for automatic teacher assignment when available
     const timetable = {
       'Monday': {
         '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
@@ -575,10 +452,6 @@
       startBtn.disabled = !(date && subjectCode);
     }
 
-    function generateSessionId() {
-      return 'ATT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
     function findTeacherAndTime(date, subjectCode) {
       const selectedDate = new Date(date);
       const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
@@ -608,11 +481,10 @@
       const selectedDate = new Date(date);
       const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
       
+      // Try to find teacher and time from timetable, use defaults if not found
       const classDetails = findTeacherAndTime(date, subjectCode);
-      sessionId = generateSessionId();
 
       currentSession = {
-        sessionId: sessionId,
         date: selectedDate.toLocaleDateString('en-GB'),
         day: dayName,
         timeSlot: classDetails.timeSlot,
@@ -620,9 +492,6 @@
         subjectName: subjectNames[subjectCode],
         teacherName: classDetails.teacher
       };
-
-      // Store session in localStorage for student access
-      localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(currentSession));
 
       // Show class information
       document.getElementById('classInfo').innerHTML = `
@@ -632,12 +501,8 @@
           <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
           <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
           <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
-          <div><strong>Session ID:</strong> ${sessionId}</div>
         </div>
       `;
-
-      // Generate QR Code
-      generateQRCode();
 
       // Hide setup section and show attendance section
       document.getElementById('setupSection').style.display = 'none';
@@ -645,27 +510,14 @@
 
       // Reset attendance and render table
       attendance = {};
-      attendanceTime = {};
       renderTable();
       updateStats();
     }
 
-    function generateQRCode() {
-      const checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
-      document.getElementById('sessionId').textContent = sessionId;
-      document.getElementById('qrUrl').textContent = checkinUrl;
-
-      const canvas = document.getElementById('qrcode');
-      QRCode.toCanvas(canvas, checkinUrl, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        }
-      }, function (error) {
-        if (error) console.error('QR Code generation failed:', error);
-      });
+    function markPresent(id) {
+      attendance[id] = true;
+      renderTable();
+      updateStats();
     }
 
     function updateStats() {
@@ -716,10 +568,9 @@
           <td>
             ${attendance[student.id] ? 
               '<span class="status-present">Present</span>' : 
-              '<span class="status-absent">Absent</span>'
+              `<button class="mark-present-btn" onclick="markPresent('${student.id}')">Mark Present</button>`
             }
           </td>
-          <td>${attendanceTime[student.id] || '-'}</td>
         `;
         tbody.appendChild(row);
       });
@@ -727,132 +578,13 @@
       updateStats();
     }
 
-    // Student Check-in Functions
-    function showStudentCheckin(sessionId) {
-      const session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId));
-      if (!session) {
-        alert('Invalid or expired session ID');
-        return;
-      }
-
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      
-      document.getElementById('checkinClassInfo').innerHTML = 
-        `${session.subjectName} - ${session.date} (${session.timeSlot})`;
-    }
-
-    function submitAttendance() {
-      const sessionId = new URLSearchParams(window.location.search).get('session');
-      const studentId = document.getElementById('studentId').value.trim();
-      const studentName = document.getElementById('studentName').value.trim();
-      const messageDiv = document.getElementById('checkinMessage');
-
-      if (!studentId || !studentName) {
-        messageDiv.innerHTML = '<div class="error-message">Please fill in all fields</div>';
-        return;
-      }
-
-      // Find student in database
-      const student = students.find(s => 
-        s.id.toLowerCase() === studentId.toLowerCase() && 
-        s.name.toLowerCase() === studentName.toLowerCase()
-      );
-
-      if (!student) {
-        messageDiv.innerHTML = '<div class="error-message">Student ID and Name do not match our records</div>';
-        return;
-      }
-
-      // Check if already marked present
-      const attendanceKey = 'attendance_' + sessionId;
-      let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-      
-      if (sessionAttendance[student.id]) {
-        messageDiv.innerHTML = '<div class="error-message">You have already marked your attendance for this session</div>';
-        return;
-      }
-
-      // Mark attendance
-      const currentTime = new Date().toLocaleTimeString();
-      sessionAttendance[student.id] = {
-        time: currentTime,
-        name: student.name
-      };
-
-      localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
-      
-      messageDiv.innerHTML = `
-        <div class="success-message">
-          ✅ Attendance marked successfully!<br>
-          Student: ${student.name}<br>
-          Time: ${currentTime}
-        </div>
-      `;
-
-      // Clear form
-      document.getElementById('studentId').value = '';
-      document.getElementById('studentName').value = '';
-
-      // Update teacher dashboard if it's the current session
-      if (currentSession && currentSession.sessionId === sessionId) {
-        attendance[student.id] = true;
-        attendanceTime[student.id] = currentTime;
-        renderTable();
-        updateStats();
-      }
-    }
-
-    // Check if opening with session parameter
-    window.onload = function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionParam = urlParams.get('session');
-      
-      if (sessionParam) {
-        showStudentCheckin(sessionParam);
-      } else {
-        // Set today's date as default
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('attendanceDate').value = today;
-        validateForm();
-        
-        // Load existing attendance if session exists
-        if (currentSession) {
-          const attendanceKey = 'attendance_' + currentSession.sessionId;
-          const sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-          
-          for (const studentId in sessionAttendance) {
-            attendance[studentId] = true;
-            attendanceTime[studentId] = sessionAttendance[studentId].time;
-          }
-          
-          renderTable();
-          updateStats();
-        }
-      }
-    };
-
-    // Auto-refresh attendance every 10 seconds
-    setInterval(function() {
-      if (currentSession) {
-        const attendanceKey = 'attendance_' + currentSession.sessionId;
-        const sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-        
-        let updated = false;
-        for (const studentId in sessionAttendance) {
-          if (!attendance[studentId]) {
-            attendance[studentId] = true;
-            attendanceTime[studentId] = sessionAttendance[studentId].time;
-            updated = true;
-          }
-        }
-        
-        if (updated) {
-          renderTable();
-          updateStats();
-        }
-      }
-    }, 10000);
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+      // Set today's date as default
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('attendanceDate').value = today;
+      validateForm();
+    });
   </script>
 </body>
 </html>
