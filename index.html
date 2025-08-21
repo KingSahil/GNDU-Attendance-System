@@ -239,11 +239,36 @@
       border-radius: 10px;
       overflow: hidden;
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      /* Enable horizontal scrolling */
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      scrollbar-width: thin; /* Firefox */
+      scrollbar-color: #3498db #f1f1f1; /* Firefox */
+    }
+
+    /* Custom scrollbar for Webkit browsers */
+    .table-container::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    .table-container::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb {
+      background: #3498db;
+      border-radius: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover {
+      background: #2980b9;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
+      min-width: 800px; /* Ensure table doesn't compress too much */
     }
 
     th {
@@ -255,11 +280,13 @@
       font-size: 0.9rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      white-space: nowrap; /* Prevent header text from wrapping */
     }
 
     td {
       padding: 12px;
       border-bottom: 1px solid #e9ecef;
+      white-space: nowrap; /* Prevent cell content from wrapping */
     }
 
     tr:hover {
@@ -403,6 +430,16 @@
       transform: translateX(0);
     }
 
+    /* Scroll hint for mobile */
+    .scroll-hint {
+      display: none;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 10px;
+      font-style: italic;
+    }
+
     @media (max-width: 768px) {
       .setup-grid {
         grid-template-columns: 1fr;
@@ -422,13 +459,77 @@
       }
       
       th, td {
-        padding: 8px;
-        font-size: 0.85rem;
+        padding: 10px 8px;
+        font-size: 0.8rem;
       }
 
       .share-buttons {
         flex-direction: column;
       }
+
+      /* Show scroll hint on mobile */
+      .scroll-hint {
+        display: block;
+      }
+
+      /* Improve table scrolling on mobile */
+      .table-container {
+        position: relative;
+        margin-bottom: 20px;
+      }
+
+      .table-container::after {
+        content: "👈 Swipe left to see more";
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(52, 152, 219, 0.9);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.75rem;
+        pointer-events: none;
+        animation: fadeInOut 3s infinite;
+      }
+
+      @keyframes fadeInOut {
+        0%, 100% { opacity: 0; }
+        50% { opacity: 1; }
+      }
+
+      /* Make table more mobile-friendly */
+      table {
+        min-width: 900px; /* Ensure enough width for mobile scrolling */
+      }
+
+      /* Adjust column widths for better mobile experience */
+      th:nth-child(1), td:nth-child(1) { min-width: 50px; } /* S.No */
+      th:nth-child(2), td:nth-child(2) { min-width: 100px; } /* Student ID */
+      th:nth-child(3), td:nth-child(3) { min-width: 150px; } /* Name */
+      th:nth-child(4), td:nth-child(4) { min-width: 150px; } /* Father's Name */
+      th:nth-child(5), td:nth-child(5) { min-width: 80px; } /* Class Group */
+      th:nth-child(6), td:nth-child(6) { min-width: 80px; } /* Lab Group */
+      th:nth-child(7), td:nth-child(7) { min-width: 80px; } /* Status */
+      th:nth-child(8), td:nth-child(8) { min-width: 120px; } /* Check-in Time */
+    }
+
+    @media (max-width: 480px) {
+      .attendance-section {
+        padding: 20px;
+      }
+      
+      th, td {
+        padding: 8px 6px;
+        font-size: 0.75rem;
+      }
+
+      /* Smaller minimum widths for very small screens */
+      table {
+        min-width: 800px;
+      }
+
+      th:nth-child(3), td:nth-child(3) { min-width: 120px; } /* Name */
+      th:nth-child(4), td:nth-child(4) { min-width: 120px; } /* Father's Name */
     }
   </style>
 </head>
@@ -555,6 +656,7 @@
           <tbody id="studentTable"></tbody>
         </table>
       </div>
+      <div class="scroll-hint">💡 Swipe left/right to view all columns</div>
     </div>
   </div>
 
