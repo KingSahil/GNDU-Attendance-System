@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GNDU Attendance System - Computer Engineering & Technology</title>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  
   <style>
     * {
       margin: 0;
@@ -136,21 +141,36 @@
       margin: 20px 0;
     }
 
+    /* UPDATED: Single line URL display */
     .session-url {
       background: white;
       color: #333;
-      padding: 15px;
+      padding: 15px 20px;
       border-radius: 8px;
-      font-family: monospace;
-      font-size: 1rem;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.95rem;
       margin-bottom: 15px;
-      word-break: break-all;
       border: 2px solid #e9ecef;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: all;
+    }
+
+    .session-url:hover {
+      background: #f8f9fa;
+      border-color: #3498db;
+    }
+
+    .session-url:active {
+      background: #e9ecef;
     }
 
     .share-buttons {
       display: flex;
-      gap: 10px;
+      gap: 15px;
       justify-content: center;
       flex-wrap: wrap;
     }
@@ -159,19 +179,21 @@
       background: white;
       color: #e67e22;
       border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
+      padding: 12px 24px;
+      border-radius: 8px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      font-size: 0.95rem;
     }
 
     .share-btn:hover {
       transform: translateY(-2px);
       box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+      background: #f8f9fa;
     }
 
     .controls {
@@ -193,19 +215,6 @@
       border: 2px solid #e9ecef;
       border-radius: 8px;
       font-size: 1rem;
-    }
-
-    .filter-group {
-      display: flex;
-      gap: 15px;
-    }
-
-    .filter-item select {
-      padding: 12px 16px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
-      background: white;
-      min-width: 120px;
     }
 
     .stats {
@@ -239,14 +248,12 @@
       border-radius: 10px;
       overflow: hidden;
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      /* Enable horizontal scrolling */
       overflow-x: auto;
-      -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-      scrollbar-width: thin; /* Firefox */
-      scrollbar-color: #3498db #f1f1f1; /* Firefox */
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: #3498db #f1f1f1;
     }
 
-    /* Custom scrollbar for Webkit browsers */
     .table-container::-webkit-scrollbar {
       height: 8px;
     }
@@ -268,7 +275,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 800px; /* Ensure table doesn't compress too much */
+      min-width: 600px;
     }
 
     th {
@@ -280,13 +287,43 @@
       font-size: 0.9rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      white-space: nowrap; /* Prevent header text from wrapping */
+      white-space: nowrap;
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.2s ease;
+    }
+
+    th:first-child {
+      cursor: default;
+    }
+
+    th:hover:not(:first-child) {
+      background: #34495e;
+    }
+
+    th.sorted {
+      background: #e74c3c;
+    }
+
+    th:not(:first-child)::after {
+      content: "⇅";
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0.6;
+      font-size: 0.8rem;
+    }
+
+    th.sorted::after {
+      opacity: 1;
     }
 
     td {
       padding: 12px;
       border-bottom: 1px solid #e9ecef;
-      white-space: nowrap; /* Prevent cell content from wrapping */
+      white-space: nowrap;
     }
 
     tr:hover {
@@ -382,6 +419,11 @@
       box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
     }
 
+    .checkin-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .message {
       padding: 15px;
       border-radius: 8px;
@@ -424,13 +466,40 @@
       transform: translateX(400px);
       transition: all 0.3s ease;
       z-index: 1000;
+      max-width: 350px;
     }
 
     .notification.show {
       transform: translateX(0);
     }
 
-    /* Scroll hint for mobile */
+    .notification.error {
+      background: #e74c3c;
+    }
+
+    .firebase-status {
+      background: #e7f3ff;
+      border: 1px solid #b3d9ff;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #0066cc;
+    }
+
+    .firebase-status.connected {
+      background: #d4edda;
+      border-color: #c3e6cb;
+      color: #155724;
+    }
+
+    .firebase-status.error {
+      background: #f8d7da;
+      border-color: #f5c6cb;
+      color: #721c24;
+    }
+
     .scroll-hint {
       display: none;
       text-align: center;
@@ -450,10 +519,6 @@
         align-items: stretch;
       }
       
-      .filter-group {
-        flex-direction: column;
-      }
-      
       .stats {
         grid-template-columns: repeat(2, 1fr);
       }
@@ -465,14 +530,13 @@
 
       .share-buttons {
         flex-direction: column;
+        gap: 10px;
       }
 
-      /* Show scroll hint on mobile */
       .scroll-hint {
         display: block;
       }
 
-      /* Improve table scrolling on mobile */
       .table-container {
         position: relative;
         margin-bottom: 20px;
@@ -497,20 +561,22 @@
         50% { opacity: 1; }
       }
 
-      /* Make table more mobile-friendly */
       table {
-        min-width: 900px; /* Ensure enough width for mobile scrolling */
+        min-width: 700px;
       }
 
-      /* Adjust column widths for better mobile experience */
-      th:nth-child(1), td:nth-child(1) { min-width: 50px; } /* S.No */
-      th:nth-child(2), td:nth-child(2) { min-width: 100px; } /* Student ID */
-      th:nth-child(3), td:nth-child(3) { min-width: 150px; } /* Name */
-      th:nth-child(4), td:nth-child(4) { min-width: 150px; } /* Father's Name */
-      th:nth-child(5), td:nth-child(5) { min-width: 80px; } /* Class Group */
-      th:nth-child(6), td:nth-child(6) { min-width: 80px; } /* Lab Group */
-      th:nth-child(7), td:nth-child(7) { min-width: 80px; } /* Status */
-      th:nth-child(8), td:nth-child(8) { min-width: 120px; } /* Check-in Time */
+      th:nth-child(1), td:nth-child(1) { min-width: 50px; }
+      th:nth-child(2), td:nth-child(2) { min-width: 100px; }
+      th:nth-child(3), td:nth-child(3) { min-width: 150px; }
+      th:nth-child(4), td:nth-child(4) { min-width: 150px; }
+      th:nth-child(5), td:nth-child(5) { min-width: 80px; }
+      th:nth-child(6), td:nth-child(6) { min-width: 120px; }
+
+      /* UPDATED: Mobile URL styling */
+      .session-url {
+        font-size: 0.8rem;
+        padding: 12px 15px;
+      }
     }
 
     @media (max-width: 480px) {
@@ -523,13 +589,17 @@
         font-size: 0.75rem;
       }
 
-      /* Smaller minimum widths for very small screens */
       table {
-        min-width: 800px;
+        min-width: 600px;
       }
 
-      th:nth-child(3), td:nth-child(3) { min-width: 120px; } /* Name */
-      th:nth-child(4), td:nth-child(4) { min-width: 120px; } /* Father's Name */
+      th:nth-child(3), td:nth-child(3) { min-width: 120px; }
+      th:nth-child(4), td:nth-child(4) { min-width: 120px; }
+
+      .session-url {
+        font-size: 0.75rem;
+        padding: 10px 12px;
+      }
     }
   </style>
 </head>
@@ -563,6 +633,10 @@
         </div>
       </div>
 
+      <div class="firebase-status" id="firebaseStatus">
+        🔄 Connecting to Firebase...
+      </div>
+
       <div class="loading-message" id="loadingMessage">
         📄 Loading student data...
       </div>
@@ -575,21 +649,18 @@
     <div class="attendance-section" id="attendanceSection">
       <div class="current-class-info" id="classInfo"></div>
       
+      <!-- UPDATED: Simplified link section -->
       <div class="link-section">
         <h3>🔗 Student Check-in Link</h3>
         <p>Share this link with students to mark their attendance</p>
         <div class="link-container">
-          <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
-          <div class="session-url" id="sessionUrl"></div>
+          <div class="session-url" id="sessionUrl" onclick="copyLink()" title="Click to copy link"></div>
           <div class="share-buttons">
             <button class="share-btn" onclick="copyLink()">
               📋 Copy Link
             </button>
             <button class="share-btn" onclick="shareWhatsApp()">
               📱 Share on WhatsApp
-            </button>
-            <button class="share-btn" onclick="shareEmail()">
-              ✉️ Share via Email
             </button>
           </div>
         </div>
@@ -618,25 +689,6 @@
         <div class="search-box">
           <input type="text" id="search" placeholder="Search students by name or father's name...">
         </div>
-
-        <div class="filter-group">
-          <div class="filter-item">
-            <select id="classGroup">
-              <option value="">All Class Groups</option>
-              <option value="G1">Group G1</option>
-              <option value="G2">Group G2</option>
-            </select>
-          </div>
-
-          <div class="filter-item">
-            <select id="labGroup">
-              <option value="">All Lab Groups</option>
-              <option value="G1">Lab G1</option>
-              <option value="G2">Lab G2</option>
-              <option value="G3">Lab G3</option>
-            </select>
-          </div>
-        </div>
       </div>
 
       <div class="table-container">
@@ -644,19 +696,17 @@
           <thead>
             <tr>
               <th>S.No</th>
-              <th>Student ID</th>
-              <th>Name</th>
-              <th>Father's Name</th>
-              <th>Class Group</th>
-              <th>Lab Group</th>
-              <th>Status</th>
-              <th>Check-in Time</th>
+              <th id="studentIdHeader">Student ID</th>
+              <th id="nameHeader">Name</th>
+              <th id="fatherHeader">Father's Name</th>
+              <th id="statusHeader">Status</th>
+              <th id="timeHeader">Check-in Time</th>
             </tr>
           </thead>
           <tbody id="studentTable"></tbody>
         </table>
       </div>
-      <div class="scroll-hint">💡 Swipe left/right to view all columns</div>
+      <div class="scroll-hint">💡 Swipe left/right to view all columns • Click column headers to sort</div>
     </div>
   </div>
 
@@ -676,7 +726,7 @@
         <label for="studentName">Full Name</label>
         <input type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
-      <button class="checkin-btn" onclick="submitAttendance()">Mark Me Present</button>
+      <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()">Mark Me Present</button>
       <div id="checkinMessage"></div>
     </div>
   </div>
@@ -687,11 +737,50 @@
   <!-- Load students.js -->
   <script src="students.js"></script>
   <script>
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
+      authDomain: "gndu-attendance-system.firebaseapp.com",
+      projectId: "gndu-attendance-system",
+      storageBucket: "gndu-attendance-system.firebasestorage.app",
+      messagingSenderId: "874240831454",
+      appId: "1:874240831454:web:5358a9e3016b9df1e0f74f",
+      measurementId: "G-0XCLY4F1YH"
+    };
+
+    // Initialize Firebase with better error handling
+    let db;
+    let firebaseInitialized = false;
+    
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      
+      db.enableNetwork().then(() => {
+        firebaseInitialized = true;
+        updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
+        console.log('✅ Firebase initialized and connected successfully');
+      }).catch((error) => {
+        console.warn('⚠️ Firebase network error:', error);
+        updateFirebaseStatus('⚠️ Firebase connection issues - working offline', 'error');
+      });
+      
+    } catch (error) {
+      console.warn('⚠️ Firebase initialization failed:', error);
+      updateFirebaseStatus('⚠️ Firebase unavailable - working in offline mode', 'error');
+    }
+
     let attendance = {};
     let attendanceTime = {};
     let currentSession = null;
     let sessionId = null;
     let checkinUrl = '';
+    let attendanceListener = null;
+
+    // Sorting variables
+    let sortColumn = null;
+    let sortAsc = true;
+    let statusSortMode = null;
 
     // Timetable data
     const timetable = {
@@ -740,6 +829,373 @@
       'HSL4000': 'Punjab History & Culture'
     };
 
+    // Sorting functions
+    function compareValues(key, ascending = true) {
+      return function(a, b) {
+        let varA = (a[key] || '').toString().toUpperCase();
+        let varB = (b[key] || '').toString().toUpperCase();
+        
+        if (varA < varB) {
+          return ascending ? -1 : 1;
+        }
+        if (varA > varB) {
+          return ascending ? 1 : -1;
+        }
+        return 0;
+      };
+    }
+
+    function customStatusSort(a, b) {
+      const aPresent = !!attendance[a.id];
+      const bPresent = !!attendance[b.id];
+      
+      if (statusSortMode === 'presentFirst') {
+        if (aPresent && !bPresent) return -1;
+        if (!aPresent && bPresent) return 1;
+      } else if (statusSortMode === 'absentFirst') {
+        if (!aPresent && bPresent) return -1;
+        if (aPresent && !bPresent) return 1;
+      }
+      
+      return compareValues('name', true)(a, b);
+    }
+
+    function sortData(data) {
+      if (!sortColumn) return data;
+      
+      if (sortColumn === 'status') {
+        return data.sort(customStatusSort);
+      } else if (sortColumn === 'time') {
+        return data.sort((a, b) => {
+          const aTime = attendanceTime[a.id] || '';
+          const bTime = attendanceTime[b.id] || '';
+          
+          if (aTime === '' && bTime !== '') return sortAsc ? 1 : -1;
+          if (bTime === '' && aTime !== '') return sortAsc ? -1 : 1;
+          if (aTime === '' && bTime === '') return 0;
+          
+          return sortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
+        });
+      }
+      
+      return data.sort(compareValues(sortColumn, sortAsc));
+    }
+
+    // Setup sortable column headers
+    function setupSorting() {
+      const headers = {
+        'studentIdHeader': 'id',
+        'nameHeader': 'name',
+        'fatherHeader': 'father',
+        'statusHeader': 'status',
+        'timeHeader': 'time'
+      };
+
+      Object.keys(headers).forEach(headerId => {
+        const header = document.getElementById(headerId);
+        const columnKey = headers[headerId];
+        
+        if (!header) return;
+        
+        header.dataset.originalText = header.textContent;
+        
+        header.addEventListener('click', function() {
+          Object.keys(headers).forEach(id => {
+            const h = document.getElementById(id);
+            if (h) {
+              h.classList.remove('sorted');
+              h.textContent = h.dataset.originalText;
+            }
+          });
+
+          if (columnKey === 'status') {
+            if (sortColumn !== 'status') {
+              sortColumn = 'status';
+              statusSortMode = 'presentFirst';
+              header.textContent = 'Status (Present First)';
+            } else if (statusSortMode === 'presentFirst') {
+              statusSortMode = 'absentFirst';
+              header.textContent = 'Status (Absent First)';
+            } else {
+              sortColumn = null;
+              statusSortMode = null;
+              header.textContent = header.dataset.originalText;
+            }
+          } else {
+            if (sortColumn === columnKey) {
+              sortAsc = !sortAsc;
+            } else {
+              sortColumn = columnKey;
+              sortAsc = false;
+              if (columnKey !== 'name') {
+                sortAsc = true;
+              }
+            }
+            statusSortMode = null;
+            
+            const indicator = sortAsc ? ' ▲' : ' ▼';
+            header.textContent = header.dataset.originalText + indicator;
+          }
+
+          if (sortColumn) {
+            header.classList.add('sorted');
+          }
+
+          renderTable();
+        });
+      });
+    }
+
+    // Enhanced applyFilters function
+    function applyFilters() {
+      if (typeof students === 'undefined' || !Array.isArray(students)) {
+        return [];
+      }
+
+      let filtered = students.slice();
+      const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
+
+      if (searchTerm !== '') {
+        filtered = filtered.filter(student => {
+          return student.name.toLowerCase().includes(searchTerm) || 
+                 student.father.toLowerCase().includes(searchTerm) ||
+                 student.id.toLowerCase().includes(searchTerm);
+        });
+        
+        return filtered;
+      }
+
+      return sortData(filtered);
+    }
+
+    // Function to find existing session
+    async function findExistingSession(date, subjectCode) {
+      if (!firebaseInitialized) {
+        console.log('🔍 Firebase not available, checking local storage for existing sessions');
+        
+        const localSessionKey = `session_${date}_${subjectCode}`;
+        const localSession = localStorage.getItem(localSessionKey);
+        if (localSession) {
+          console.log('📂 Found existing session in local storage');
+          return JSON.parse(localSession);
+        }
+        return null;
+      }
+
+      try {
+        console.log('🔍 Searching for existing session:', { date, subjectCode });
+        
+        const sessionsRef = db.collection('attendanceSessions');
+        const querySnapshot = await sessionsRef
+          .where('date', '==', date)
+          .where('subjectCode', '==', subjectCode)
+          .where('status', '==', 'active')
+          .limit(1)
+          .get();
+
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          console.log('🎯 Found existing session:', doc.id);
+          return { id: doc.id, ...doc.data() };
+        }
+
+        console.log('❌ No existing session found');
+        return null;
+      } catch (error) {
+        console.error('❌ Error searching for existing session:', error);
+        return null;
+      }
+    }
+
+    // Function to load existing attendance data
+    async function loadExistingAttendance(sessionId) {
+      attendance = {};
+      attendanceTime = {};
+
+      if (firebaseInitialized) {
+        try {
+          const attendanceRef = db.collection('attendanceSessions')
+            .doc(sessionId)
+            .collection('attendance');
+          
+          const snapshot = await attendanceRef.get();
+          
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            const studentId = doc.id;
+            
+            attendance[studentId] = true;
+            if (data.markedAt && data.markedAt.seconds) {
+              attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
+            } else {
+              attendanceTime[studentId] = data.time || '-';
+            }
+          });
+
+          console.log(`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
+        } catch (error) {
+          console.error('❌ Error loading attendance from Firebase:', error);
+        }
+      }
+
+      const localAttendanceKey = 'attendance_' + sessionId;
+      const localAttendance = JSON.parse(localStorage.getItem(localAttendanceKey) || '{}');
+      
+      Object.keys(localAttendance).forEach(studentId => {
+        if (!attendance[studentId]) {
+          attendance[studentId] = true;
+          attendanceTime[studentId] = localAttendance[studentId].time || '-';
+        }
+      });
+
+      console.log(`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
+    }
+
+    // Firebase Functions
+    function updateFirebaseStatus(message, status) {
+      const statusEl = document.getElementById('firebaseStatus');
+      if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = `firebase-status ${status}`;
+      }
+    }
+
+    async function createAttendanceSession(sessionData) {
+      const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
+      localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
+      localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionData));
+
+      if (!firebaseInitialized) {
+        console.log('📂 Session saved to local storage only');
+        return;
+      }
+
+      try {
+        await db.collection('attendanceSessions').doc(sessionData.sessionId).set({
+          ...sessionData,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          status: 'active',
+          totalStudents: students.length,
+          presentCount: 0
+        });
+        console.log('✅ Attendance session created in Firebase');
+      } catch (error) {
+        console.error('❌ Error creating attendance session in Firebase:', error);
+      }
+    }
+
+    async function markStudentPresent(studentId, studentData) {
+      const attendanceKey = 'attendance_' + sessionId;
+      let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+      sessionAttendance[studentId] = studentData;
+      localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
+
+      if (!firebaseInitialized || !studentId || !sessionId) {
+        console.log('📂 Attendance saved to local storage only');
+        return false;
+      }
+
+      try {
+        await db.collection('attendanceSessions')
+          .doc(sessionId)
+          .collection('attendance')
+          .doc(studentId.toString())
+          .set({
+            ...studentData,
+            markedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            timestamp: Date.now()
+          });
+
+        await db.collection('attendanceSessions').doc(sessionId).update({
+          presentCount: firebase.firestore.FieldValue.increment(1),
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log('✅ Student attendance saved to Firebase');
+        return true;
+      } catch (error) {
+        console.error('❌ Error saving attendance to Firebase:', error);
+        return false;
+      }
+    }
+
+    function listenToAttendanceUpdates() {
+      if (!firebaseInitialized || !sessionId) return;
+
+      console.log('🔄 Starting to listen for attendance updates...');
+
+      if (attendanceListener) {
+        attendanceListener();
+        attendanceListener = null;
+      }
+
+      attendanceListener = db.collection('attendanceSessions')
+        .doc(sessionId)
+        .collection('attendance')
+        .onSnapshot(
+          (snapshot) => {
+            console.log('📡 Received attendance update from Firebase');
+            
+            snapshot.docChanges().forEach((change) => {
+              const data = change.doc.data();
+              const studentId = change.doc.id;
+              
+              if (change.type === 'added' || change.type === 'modified') {
+                if (!attendance[studentId]) {
+                  attendance[studentId] = true;
+                  
+                  if (data.markedAt && data.markedAt.seconds) {
+                    attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
+                  } else {
+                    attendanceTime[studentId] = data.time || new Date().toLocaleTimeString();
+                  }
+                  
+                  console.log(`✅ ${data.name || studentId} marked present`);
+                  showNotification(`${data.name || studentId} marked present`, 'success');
+                }
+              }
+              
+              if (change.type === 'removed') {
+                delete attendance[studentId];
+                delete attendanceTime[studentId];
+              }
+            });
+
+            renderTable();
+          },
+          (error) => {
+            console.error('❌ Error listening to attendance updates:', error);
+            showNotification('Connection issues. Working in offline mode.', 'error');
+          }
+        );
+    }
+
+    function stopListeningToAttendance() {
+      if (attendanceListener) {
+        attendanceListener();
+        attendanceListener = null;
+      }
+    }
+
+    // Browser navigation handling
+    window.addEventListener('popstate', function(event) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionParam = urlParams.get('session');
+      
+      if (sessionParam) {
+        sessionId = sessionParam;
+        showStudentCheckin(sessionParam);
+      } else {
+        showTeacherDashboard();
+      }
+    });
+
+    function showTeacherDashboard() {
+      document.getElementById('teacherDashboard').style.display = 'block';
+      document.getElementById('studentCheckin').style.display = 'none';
+    }
+
+    // Utility Functions
     function showNotification(message, type = 'success') {
       const notification = document.getElementById('notification');
       notification.textContent = message;
@@ -805,7 +1261,8 @@
       };
     }
 
-    function startAttendance() {
+    // Enhanced startAttendance function with existing session check
+    async function startAttendance() {
       if (!validateForm()) {
         alert('Please ensure all fields are selected and students data is loaded');
         return;
@@ -816,53 +1273,64 @@
       
       const selectedDate = new Date(date);
       const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedDate = selectedDate.toLocaleDateString('en-GB');
       
-      const classDetails = findTeacherAndTime(date, subjectCode);
-      sessionId = generateSessionId();
+      const existingSession = await findExistingSession(formattedDate, subjectCode);
+      
+      let isNewSession = false;
+      
+      if (existingSession && existingSession.id) {
+        sessionId = existingSession.id;
+        currentSession = existingSession;
+        console.log('🔄 Continuing existing session:', sessionId);
+        showNotification('📚 Continuing existing attendance session', 'success');
+        
+        await loadExistingAttendance(sessionId);
+      } else {
+        isNewSession = true;
+        const classDetails = findTeacherAndTime(date, subjectCode);
+        sessionId = generateSessionId();
 
-      currentSession = {
-        sessionId: sessionId,
-        date: selectedDate.toLocaleDateString('en-GB'),
-        day: dayName,
-        timeSlot: classDetails.timeSlot,
-        subjectCode: subjectCode,
-        subjectName: subjectNames[subjectCode],
-        teacherName: classDetails.teacher
-      };
+        currentSession = {
+          sessionId: sessionId,
+          date: formattedDate,
+          day: dayName,
+          timeSlot: classDetails.timeSlot,
+          subjectCode: subjectCode,
+          subjectName: subjectNames[subjectCode],
+          teacherName: classDetails.teacher
+        };
 
-      // Store session
-      localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(currentSession));
+        await createAttendanceSession(currentSession);
+        console.log('🆕 Created new session:', sessionId);
+        showNotification('✅ New attendance session started', 'success');
+        
+        attendance = {};
+        attendanceTime = {};
+      }
 
-      // Generate check-in URL
       checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
 
-      // Show class information
+      // UPDATED: Removed Session ID display from class info
       document.getElementById('classInfo').innerHTML = `
-        <h3>Current Attendance Session</h3>
+        <h3>${isNewSession ? 'New' : 'Continuing'} Attendance Session</h3>
         <div class="class-details">
           <div><strong>Date:</strong> ${currentSession.date} (${currentSession.day})</div>
           <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
           <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
           <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
-          <div><strong>Session ID:</strong> ${sessionId}</div>
+          ${!isNewSession ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
         </div>
       `;
 
-      // Display session details
-      document.getElementById('sessionId').textContent = sessionId;
+      // UPDATED: Direct URL display without session ID
       document.getElementById('sessionUrl').textContent = checkinUrl;
 
-      // Hide setup section and show attendance section
       document.getElementById('setupSection').style.display = 'none';
       document.getElementById('attendanceSection').style.display = 'block';
 
-      // Reset attendance and render table
-      attendance = {};
-      attendanceTime = {};
       renderTable();
-      updateStats();
-
-      console.log('✅ Attendance session started successfully');
+      listenToAttendanceUpdates();
     }
 
     // Share Functions
@@ -870,7 +1338,6 @@
       navigator.clipboard.writeText(checkinUrl).then(() => {
         showNotification('✅ Link copied to clipboard!');
       }).catch(() => {
-        // Fallback for older browsers
         const textArea = document.createElement('textarea');
         textArea.value = checkinUrl;
         document.body.appendChild(textArea);
@@ -887,18 +1354,19 @@
       window.open(whatsappUrl, '_blank');
     }
 
-    function shareEmail() {
-      const subject = `GNDU Attendance - ${currentSession.subjectName}`;
-      const body = `Dear Students,\n\nPlease mark your attendance for:\n\nSubject: ${currentSession.subjectName}\nDate: ${currentSession.date}\nTime: ${currentSession.timeSlot}\nTeacher: ${currentSession.teacherName}\n\nClick this link to mark your attendance:\n${checkinUrl}\n\nBest regards,\nGNDU Attendance System`;
-      
-      const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.location.href = mailtoUrl;
-    }
+    // REMOVED: shareEmail function
 
+    // Only update stats when no search filter is active
     function updateStats() {
-      const filteredStudents = getFilteredStudents();
-      const presentStudents = filteredStudents.filter(student => attendance[student.id]).length;
-      const totalStudents = filteredStudents.length;
+      const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
+      
+      if (searchTerm !== '') {
+        return;
+      }
+
+      const allStudents = students || [];
+      const presentStudents = allStudents.filter(student => attendance[student.id]).length;
+      const totalStudents = allStudents.length;
       const absentStudents = totalStudents - presentStudents;
       const attendancePercent = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
 
@@ -908,29 +1376,10 @@
       document.getElementById('attendancePercent').textContent = attendancePercent + '%';
     }
 
-    function getFilteredStudents() {
-      if (typeof students === 'undefined' || !Array.isArray(students)) {
-        return [];
-      }
-
-      const search = document.getElementById("search")?.value.toLowerCase() || '';
-      const classGroup = document.getElementById("classGroup")?.value || '';
-      const labGroup = document.getElementById("labGroup")?.value || '';
-
-      return students.filter(student => {
-        const matchSearch = student.name.toLowerCase().includes(search) || 
-                           student.father.toLowerCase().includes(search) ||
-                           student.id.toLowerCase().includes(search);
-        const matchClass = classGroup === "" || student.class_group_no === classGroup;
-        const matchLab = labGroup === "" || student.lab_group_no === labGroup;
-        
-        return matchSearch && matchClass && matchLab;
-      });
-    }
-
+    // Enhanced renderTable function
     function renderTable() {
       const tbody = document.getElementById("studentTable");
-      const filteredStudents = getFilteredStudents();
+      const filteredStudents = applyFilters();
 
       tbody.innerHTML = "";
       filteredStudents.forEach((student, index) => {
@@ -942,8 +1391,6 @@
           <td>${student.id}</td>
           <td>${student.name}</td>
           <td>${student.father}</td>
-          <td>${student.class_group_no}</td>
-          <td>${student.lab_group_no}</td>
           <td>
             ${attendance[student.id] ? 
               '<span class="status-present">Present</span>' : 
@@ -959,13 +1406,36 @@
     }
 
     // Student Check-in Functions
-    function showStudentCheckin(sessionId) {
-      const session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId));
+    function showStudentCheckin(sessionParam) {
+      let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
+      
+      if (!session && firebaseInitialized) {
+        db.collection('attendanceSessions').doc(sessionParam).get()
+          .then((doc) => {
+            if (doc.exists) {
+              session = doc.data();
+              localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
+              displayStudentCheckin(session);
+            } else {
+              alert('Session not found or has expired');
+            }
+          })
+          .catch((error) => {
+            console.error('Error fetching session:', error);
+            alert('Unable to load session. Please try again.');
+          });
+        return;
+      }
+      
       if (!session) {
         alert('Invalid or expired session ID');
         return;
       }
 
+      displayStudentCheckin(session);
+    }
+
+    function displayStudentCheckin(session) {
       document.getElementById('teacherDashboard').style.display = 'none';
       document.getElementById('studentCheckin').style.display = 'block';
       
@@ -973,64 +1443,87 @@
         `${session.subjectName}<br>${session.date} (${session.timeSlot})`;
     }
 
-    function submitAttendance() {
-      const sessionId = new URLSearchParams(window.location.search).get('session');
+    async function submitAttendance() {
+      const urlSessionId = new URLSearchParams(window.location.search).get('session');
       const studentId = document.getElementById('studentId').value.trim();
       const studentName = document.getElementById('studentName').value.trim();
       const messageDiv = document.getElementById('checkinMessage');
+      const submitBtn = document.getElementById('submitBtn');
+
+      console.log('📝 Submitting attendance:', { urlSessionId, studentId, studentName });
+
+      if (!urlSessionId) {
+        messageDiv.innerHTML = '<div class="error-message">Invalid session. Please use a valid attendance link.</div>';
+        return;
+      }
 
       if (!studentId || !studentName) {
         messageDiv.innerHTML = '<div class="error-message">Please fill in all fields</div>';
         return;
       }
 
-      // Find student in database
-      const student = students.find(s => 
-        s.id.toLowerCase() === studentId.toLowerCase() && 
-        s.name.toLowerCase() === studentName.toLowerCase()
-      );
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
 
-      if (!student) {
-        messageDiv.innerHTML = '<div class="error-message">Student ID and Name do not match our records</div>';
-        return;
-      }
+      try {
+        const student = students.find(s => {
+          if (!s.id || !s.name) return false;
+          return s.id.toString().toLowerCase() === studentId.toLowerCase() && 
+                 s.name.toLowerCase() === studentName.toLowerCase();
+        });
 
-      // Check if already marked present
-      const attendanceKey = 'attendance_' + sessionId;
-      let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-      
-      if (sessionAttendance[student.id]) {
-        messageDiv.innerHTML = '<div class="error-message">You have already marked your attendance for this session</div>';
-        return;
-      }
+        if (!student) {
+          messageDiv.innerHTML = '<div class="error-message">Student ID and Name do not match our records. Please check your spelling.</div>';
+          return;
+        }
 
-      // Mark attendance
-      const currentTime = new Date().toLocaleTimeString();
-      sessionAttendance[student.id] = {
-        time: currentTime,
-        name: student.name
-      };
+        const attendanceKey = 'attendance_' + urlSessionId;
+        let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+        
+        if (sessionAttendance[student.id]) {
+          messageDiv.innerHTML = '<div class="error-message">You have already marked your attendance for this session</div>';
+          return;
+        }
 
-      localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
-      
-      messageDiv.innerHTML = `
-        <div class="success-message">
-          ✅ Attendance marked successfully!<br>
-          Student: ${student.name}<br>
-          Time: ${currentTime}
-        </div>
-      `;
+        const currentTime = new Date().toLocaleTimeString();
+        const attendanceData = {
+          studentId: student.id.toString(),
+          name: student.name,
+          father: student.father,
+          time: currentTime
+        };
 
-      // Clear form
-      document.getElementById('studentId').value = '';
-      document.getElementById('studentName').value = '';
+        const originalSessionId = sessionId;
+        sessionId = urlSessionId;
 
-      // Update teacher dashboard if it's the current session
-      if (currentSession && currentSession.sessionId === sessionId) {
-        attendance[student.id] = true;
-        attendanceTime[student.id] = currentTime;
-        renderTable();
-        updateStats();
+        const firebaseSaved = await markStudentPresent(student.id.toString(), attendanceData);
+
+        sessionId = originalSessionId;
+
+        messageDiv.innerHTML = `
+          <div class="success-message">
+            ✅ Attendance marked successfully!<br>
+            Student: ${student.name}<br>
+            Time: ${currentTime}
+            ${firebaseSaved ? '<br>📡 Synced with server' : '<br>💾 Saved locally'}
+          </div>
+        `;
+
+        document.getElementById('studentId').value = '';
+        document.getElementById('studentName').value = '';
+
+        if (currentSession && currentSession.sessionId === urlSessionId) {
+          attendance[student.id] = true;
+          attendanceTime[student.id] = currentTime;
+          renderTable();
+        }
+
+      } catch (error) {
+        console.error('Error submitting attendance:', error);
+        messageDiv.innerHTML = '<div class="error-message">Error submitting attendance. Please try again.</div>';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Mark Me Present';
       }
     }
 
@@ -1038,11 +1531,9 @@
     document.addEventListener('DOMContentLoaded', function() {
       console.log('🚀 GNDU Attendance System starting...');
 
-      // Set today's date as default
       const today = new Date().toISOString().split('T')[0];
       document.getElementById('attendanceDate').value = today;
       
-      // Add event listeners
       document.getElementById('attendanceDate').addEventListener('change', validateForm);
       document.getElementById('subjectCode').addEventListener('change', validateForm);
       document.getElementById('startBtn').addEventListener('click', startAttendance);
@@ -1050,21 +1541,15 @@
       if (document.getElementById('search')) {
         document.getElementById('search').addEventListener('keyup', renderTable);
       }
-      if (document.getElementById('classGroup')) {
-        document.getElementById('classGroup').addEventListener('change', renderTable);
-      }
-      if (document.getElementById('labGroup')) {
-        document.getElementById('labGroup').addEventListener('change', renderTable);
-      }
 
-      // Check URL parameters for student check-in
+      setupSorting();
+
       const urlParams = new URLSearchParams(window.location.search);
       const sessionParam = urlParams.get('session');
       
       if (sessionParam) {
         showStudentCheckin(sessionParam);
       } else {
-        // Wait a moment for students.js to load then validate
         setTimeout(() => {
           validateForm();
         }, 100);
@@ -1073,27 +1558,14 @@
       console.log('✅ GNDU Attendance System initialized');
     });
 
-    // Auto-refresh attendance every 10 seconds
-    setInterval(function() {
-      if (currentSession) {
-        const attendanceKey = 'attendance_' + currentSession.sessionId;
-        const sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-        
-        let updated = false;
-        for (const studentId in sessionAttendance) {
-          if (!attendance[studentId]) {
-            attendance[studentId] = true;
-            attendanceTime[studentId] = sessionAttendance[studentId].time;
-            updated = true;
-          }
-        }
-        
-        if (updated) {
-          renderTable();
-          updateStats();
-        }
-      }
-    }, 10000);
+    window.addEventListener('beforeunload', function() {
+      stopListeningToAttendance();
+    });
+
+    // Make functions globally accessible
+    window.submitAttendance = submitAttendance;
+    window.copyLink = copyLink;
+    window.shareWhatsApp = shareWhatsApp;
   </script>
 </body>
 </html>
