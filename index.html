@@ -32,6 +32,33 @@
       overflow: hidden;
     }
 
+    /* Login screen styles */
+    .login-container {
+      max-width: 400px;
+      margin: 100px auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .login-header {
+      background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .login-header h1 {
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+      font-weight: 300;
+    }
+
+    .login-form {
+      padding: 40px;
+    }
+
     .header {
       background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
       color: white;
@@ -48,6 +75,25 @@
     .header p {
       font-size: 1.1rem;
       opacity: 0.9;
+    }
+
+    /* Logout button */
+    .logout-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .logout-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
     }
 
     .setup-section {
@@ -85,6 +131,7 @@
       font-size: 1rem;
       transition: all 0.3s ease;
       background: white;
+      font-family: inherit;
     }
 
     .form-group input:focus,
@@ -94,7 +141,22 @@
       box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
     }
 
-    .start-btn {
+    /* UPDATED: Secret code input styling */
+    .secret-code-input {
+      background: linear-gradient(45deg, #fff3cd, #ffeaa7) !important;
+      border: 2px solid #f39c12 !important;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .secret-code-input:focus {
+      border-color: #e74c3c !important;
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2) !important;
+    }
+
+    .start-btn, .login-btn {
       background: linear-gradient(135deg, #e74c3c 0%, #f39c12 100%);
       color: white;
       padding: 15px 30px;
@@ -106,14 +168,15 @@
       transition: all 0.3s ease;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      width: 100%;
     }
 
-    .start-btn:hover {
+    .start-btn:hover, .login-btn:hover {
       transform: translateY(-2px);
       box-shadow: 0 10px 20px rgba(231, 76, 60, 0.3);
     }
 
-    .start-btn:disabled {
+    .start-btn:disabled, .login-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
@@ -141,7 +204,6 @@
       margin: 20px 0;
     }
 
-    /* UPDATED: Single line URL display */
     .session-url {
       background: white;
       color: #333;
@@ -363,6 +425,7 @@
       padding: 20px;
       border-radius: 10px;
       margin-bottom: 20px;
+      position: relative;
     }
 
     .current-class-info h3 {
@@ -375,6 +438,28 @@
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 15px;
       font-size: 0.95rem;
+    }
+
+    /* UPDATED: Secret code display */
+    .secret-code-info {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      text-align: center;
+    }
+
+    .secret-code-display {
+      background: rgba(255, 255, 255, 0.3);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #ffd700;
+      text-transform: uppercase;
+      margin-top: 10px;
+      border: 2px dashed rgba(255, 255, 255, 0.5);
     }
 
     .checkin-container {
@@ -442,6 +527,34 @@
       background: #f8d7da;
       color: #721c24;
       border: 1px solid #f5c6cb;
+    }
+
+    .location-status {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .location-status.allowed {
+      background: #d4edda;
+      border-color: #c3e6cb;
+      color: #155724;
+    }
+
+    .location-status.denied {
+      background: #f8d7da;
+      border-color: #f5c6cb;
+      color: #721c24;
+    }
+
+    .location-status.checking {
+      background: #d1ecf1;
+      border-color: #b8daff;
+      color: #0c5460;
     }
 
     .loading-message {
@@ -572,10 +685,14 @@
       th:nth-child(5), td:nth-child(5) { min-width: 80px; }
       th:nth-child(6), td:nth-child(6) { min-width: 120px; }
 
-      /* UPDATED: Mobile URL styling */
       .session-url {
         font-size: 0.8rem;
         padding: 12px 15px;
+      }
+
+      .secret-code-display {
+        font-size: 1.2rem;
+        letter-spacing: 2px;
       }
     }
 
@@ -600,13 +717,39 @@
         font-size: 0.75rem;
         padding: 10px 12px;
       }
+
+      .secret-code-display {
+        font-size: 1rem;
+        letter-spacing: 1px;
+      }
     }
   </style>
 </head>
 <body>
+  <!-- Login Screen -->
+  <div class="login-container" id="loginScreen">
+    <div class="login-header">
+      <h1>🔐 Secure Login</h1>
+      <p>GNDU Attendance System</p>
+    </div>
+    <div class="login-form">
+      <div class="form-group">
+        <label for="loginEmail">Email Address</label>
+        <input type="email" id="loginEmail" placeholder="Enter your email" required>
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter your password" required>
+      </div>
+      <button class="login-btn" id="loginBtn" onclick="handleLogin()">Login</button>
+      <div id="loginMessage"></div>
+    </div>
+  </div>
+
   <!-- Teacher Dashboard -->
-  <div class="container" id="teacherDashboard">
+  <div class="container" id="teacherDashboard" style="display: none;">
     <div class="header">
+      <button class="logout-btn" onclick="handleLogout()">🚪 Logout</button>
       <h1>GNDU Attendance System</h1>
       <p>Department of Computer Engineering & Technology</p>
     </div>
@@ -631,6 +774,13 @@
             <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
           </select>
         </div>
+
+        <!-- UPDATED: Secret Code Field -->
+        <div class="form-group">
+          <label for="secretCode">Secret Code</label>
+          <input autocomplete="off" type="text" id="secretCode" class="secret-code-input" placeholder="Set the Secret Code" required maxlength="20">
+          <small style="color: #666; margin-top: 5px; display: block;">Students must enter this exact code to mark attendance</small>
+        </div>
       </div>
 
       <div class="firebase-status" id="firebaseStatus">
@@ -647,9 +797,10 @@
     </div>
 
     <div class="attendance-section" id="attendanceSection">
-      <div class="current-class-info" id="classInfo"></div>
+      <div class="current-class-info" id="classInfo">
+        <!-- Secret code will be displayed here -->
+      </div>
       
-      <!-- UPDATED: Simplified link section -->
       <div class="link-section">
         <h3>🔗 Student Check-in Link</h3>
         <p>Share this link with students to mark their attendance</p>
@@ -718,6 +869,17 @@
       <p id="checkinClassInfo"></p>
     </div>
     <div class="checkin-form">
+      <div class="location-status checking" id="locationStatus">
+        📍 Checking your location...
+      </div>
+
+      <!-- UPDATED: Secret Code Field -->
+      <div class="form-group">
+        <label for="secretCodeInput">🔑 Secret Code</label>
+        <input type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
+        <small style="color: #666; margin-top: 5px; display: block;">Ask your teacher for the secret code</small>
+      </div>
+
       <div class="form-group">
         <label for="studentId">Student ID</label>
         <input type="text" id="studentId" placeholder="Enter your Student ID" required>
@@ -726,7 +888,7 @@
         <label for="studentName">Full Name</label>
         <input type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
-      <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()">Mark Me Present</button>
+      <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>
     </div>
   </div>
@@ -747,6 +909,10 @@
       appId: "1:874240831454:web:5358a9e3016b9df1e0f74f",
       measurementId: "G-0XCLY4F1YH"
     };
+
+    // Authorization credentials
+    const AUTHORIZED_EMAIL = "sahilgupta1750@gmail.com";
+    const AUTHORIZED_PASSWORD = "unknownboy";
 
     // Initialize Firebase with better error handling
     let db;
@@ -776,11 +942,17 @@
     let sessionId = null;
     let checkinUrl = '';
     let attendanceListener = null;
+    let sessionSecretCode = ''; // UPDATED: Store secret code
 
     // Sorting variables
     let sortColumn = null;
     let sortAsc = true;
     let statusSortMode = null;
+
+    // Location checking variables
+    const UNIVERSITY_LAT = 31.635428012027894;
+    const UNIVERSITY_LNG = 74.82433444456309;
+    const ALLOWED_RADIUS_METERS = 150;
 
     // Timetable data
     const timetable = {
@@ -829,7 +1001,164 @@
       'HSL4000': 'Punjab History & Culture'
     };
 
-    // Sorting functions
+    // Authorization functions
+    function handleLogin() {
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const messageDiv = document.getElementById('loginMessage');
+      const loginBtn = document.getElementById('loginBtn');
+
+      if (!email || !password) {
+        messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Verifying...';
+
+      setTimeout(() => {
+        if (email === AUTHORIZED_EMAIL && password === AUTHORIZED_PASSWORD) {
+          messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
+          
+          localStorage.setItem('gndu_logged_in', 'true');
+          localStorage.setItem('gndu_login_time', Date.now().toString());
+          
+          setTimeout(() => {
+            showDashboard();
+          }, 1000);
+        } else {
+          messageDiv.innerHTML = '<div class="error-message">❌ Invalid email or password. Access denied.</div>';
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Login';
+        }
+      }, 1000);
+    }
+
+    function handleLogout() {
+      if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('gndu_logged_in');
+        localStorage.removeItem('gndu_login_time');
+        showLoginScreen();
+        showNotification('👋 Logged out successfully');
+      }
+    }
+
+    function showLoginScreen() {
+      document.getElementById('loginScreen').style.display = 'block';
+      document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentCheckin').style.display = 'none';
+      
+      document.getElementById('loginEmail').value = '';
+      document.getElementById('loginPassword').value = '';
+      document.getElementById('loginMessage').innerHTML = '';
+      document.getElementById('loginBtn').disabled = false;
+      document.getElementById('loginBtn').textContent = 'Login';
+    }
+
+    function showDashboard() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('teacherDashboard').style.display = 'block';
+      document.getElementById('studentCheckin').style.display = 'none';
+    }
+
+    function checkAuthStatus() {
+      const loggedIn = localStorage.getItem('gndu_logged_in');
+      const loginTime = localStorage.getItem('gndu_login_time');
+      
+      const sessionDuration = 24 * 60 * 60 * 1000; // 24 hours
+      const now = Date.now();
+      
+      if (loggedIn === 'true' && loginTime && (now - parseInt(loginTime)) < sessionDuration) {
+        return true;
+      } else {
+        localStorage.removeItem('gndu_logged_in');
+        localStorage.removeItem('gndu_login_time');
+        return false;
+      }
+    }
+
+    // Geolocation functions
+    function toRadians(degrees) {
+      return degrees * (Math.PI / 180);
+    }
+
+    function calculateDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371000;
+      const dLat = toRadians(lat2 - lat1);
+      const dLng = toRadians(lng2 - lng1);
+      const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function updateLocationStatus(message, className) {
+      const statusDiv = document.getElementById('locationStatus');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+        statusDiv.className = `location-status ${className}`;
+      }
+    }
+
+    async function checkUserLocation() {
+      if (!navigator.geolocation) {
+        updateLocationStatus('❌ Location services not supported by your browser', 'denied');
+        return false;
+      }
+
+      return new Promise((resolve) => {
+        updateLocationStatus('📍 Getting your location...', 'checking');
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const userLat = position.coords.latitude;
+            const userLng = position.coords.longitude;
+            const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
+            
+            console.log(`📍 User location: ${userLat}, ${userLng}`);
+            console.log(`🏫 University location: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
+            console.log(`📏 Distance from university: ${distance.toFixed(2)} meters`);
+            
+            if (distance <= ALLOWED_RADIUS_METERS) {
+              updateLocationStatus(`✅ You are inside university campus (${distance.toFixed(0)}m from center)`, 'allowed');
+              resolve(true);
+            } else {
+              updateLocationStatus(`❌ You are outside university campus (${distance.toFixed(0)}m away). You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`, 'denied');
+              resolve(false);
+            }
+          },
+          (error) => {
+            console.error('❌ Geolocation error:', error);
+            let errorMessage = '';
+            switch (error.code) {
+              case error.PERMISSION_DENIED:
+                errorMessage = '❌ Location access denied. Please allow location access to mark attendance.';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                errorMessage = '❌ Location information unavailable. Please try again.';
+                break;
+              case error.TIMEOUT:
+                errorMessage = '❌ Location request timed out. Please try again.';
+                break;
+              default:
+                errorMessage = '❌ Unable to get your location. Please try again.';
+                break;
+            }
+            updateLocationStatus(errorMessage, 'denied');
+            resolve(false);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 60000
+          }
+        );
+      });
+    }
+
+    // Sorting functions (unchanged)
     function compareValues(key, ascending = true) {
       return function(a, b) {
         let varA = (a[key] || '').toString().toUpperCase();
@@ -1186,7 +1515,11 @@
         sessionId = sessionParam;
         showStudentCheckin(sessionParam);
       } else {
-        showTeacherDashboard();
+        if (checkAuthStatus()) {
+          showDashboard();
+        } else {
+          showLoginScreen();
+        }
       }
     });
 
@@ -1223,13 +1556,15 @@
       }
     }
 
+    // UPDATED: Enhanced validateForm with secret code
     function validateForm() {
       const date = document.getElementById('attendanceDate').value;
       const subjectCode = document.getElementById('subjectCode').value;
+      const secretCode = document.getElementById('secretCode').value.trim();
       const studentsLoaded = checkStudentsLoaded();
       
       const startBtn = document.getElementById('startBtn');
-      const isValid = date && subjectCode && studentsLoaded;
+      const isValid = date && subjectCode && secretCode && studentsLoaded;
       
       startBtn.disabled = !isValid;
       return isValid;
@@ -1261,15 +1596,16 @@
       };
     }
 
-    // Enhanced startAttendance function with existing session check
+    // UPDATED: Enhanced startAttendance with secret code
     async function startAttendance() {
       if (!validateForm()) {
-        alert('Please ensure all fields are selected and students data is loaded');
+        alert('Please ensure all fields are filled including the secret code');
         return;
       }
 
       const date = document.getElementById('attendanceDate').value;
       const subjectCode = document.getElementById('subjectCode').value;
+      const secretCode = document.getElementById('secretCode').value.trim().toUpperCase();
       
       const selectedDate = new Date(date);
       const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
@@ -1282,6 +1618,7 @@
       if (existingSession && existingSession.id) {
         sessionId = existingSession.id;
         currentSession = existingSession;
+        sessionSecretCode = existingSession.secretCode || secretCode;
         console.log('🔄 Continuing existing session:', sessionId);
         showNotification('📚 Continuing existing attendance session', 'success');
         
@@ -1290,6 +1627,7 @@
         isNewSession = true;
         const classDetails = findTeacherAndTime(date, subjectCode);
         sessionId = generateSessionId();
+        sessionSecretCode = secretCode;
 
         currentSession = {
           sessionId: sessionId,
@@ -1298,7 +1636,8 @@
           timeSlot: classDetails.timeSlot,
           subjectCode: subjectCode,
           subjectName: subjectNames[subjectCode],
-          teacherName: classDetails.teacher
+          teacherName: classDetails.teacher,
+          secretCode: sessionSecretCode // UPDATED: Store secret code
         };
 
         await createAttendanceSession(currentSession);
@@ -1311,7 +1650,7 @@
 
       checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
 
-      // UPDATED: Removed Session ID display from class info
+      // UPDATED: Display session info with secret code
       document.getElementById('classInfo').innerHTML = `
         <h3>${isNewSession ? 'New' : 'Continuing'} Attendance Session</h3>
         <div class="class-details">
@@ -1321,9 +1660,12 @@
           <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
           ${!isNewSession ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
         </div>
+        <div class="secret-code-info">
+          <strong>🔑 Secret Code:</strong>
+          <div class="secret-code-display">${sessionSecretCode}</div>
+        </div>
       `;
 
-      // UPDATED: Direct URL display without session ID
       document.getElementById('sessionUrl').textContent = checkinUrl;
 
       document.getElementById('setupSection').style.display = 'none';
@@ -1349,12 +1691,10 @@
     }
 
     function shareWhatsApp() {
-      const message = `📚 GNDU Attendance System\n\n${currentSession.subjectName}\nDate: ${currentSession.date}\nTime: ${currentSession.timeSlot}\nTeacher: ${currentSession.teacherName}\n\nClick this link to mark your attendance:\n${checkinUrl}`;
+      const message = `*"GNDU Attendance System"*\n\n${currentSession.subjectName}\nDate: ${currentSession.date}\nTime: ${currentSession.timeSlot}\nTeacher: ${currentSession.teacherName}\n\n*"Important Requirements:"*\n1. You must be inside the university campus\n2. You must enter the secret code correctly told in classroom\n\nClick this link to mark your attendance:\n${checkinUrl}`;
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
       window.open(whatsappUrl, '_blank');
     }
-
-    // REMOVED: shareEmail function
 
     // Only update stats when no search filter is active
     function updateStats() {
@@ -1435,18 +1775,35 @@
       displayStudentCheckin(session);
     }
 
-    function displayStudentCheckin(session) {
+    async function displayStudentCheckin(session) {
+      document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('teacherDashboard').style.display = 'none';
       document.getElementById('studentCheckin').style.display = 'block';
       
       document.getElementById('checkinClassInfo').innerHTML = 
         `${session.subjectName}<br>${session.date} (${session.timeSlot})`;
+
+      // Store secret code for validation
+      sessionSecretCode = session.secretCode || '';
+
+      // Check location when student check-in page loads
+      const locationAllowed = await checkUserLocation();
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = !locationAllowed;
+      
+      if (locationAllowed) {
+        submitBtn.textContent = 'Mark Me Present';
+      } else {
+        submitBtn.textContent = 'Location Required';
+      }
     }
 
+    // UPDATED: submitAttendance function with secret code verification
     async function submitAttendance() {
       const urlSessionId = new URLSearchParams(window.location.search).get('session');
       const studentId = document.getElementById('studentId').value.trim();
       const studentName = document.getElementById('studentName').value.trim();
+      const secretCodeInput = document.getElementById('secretCodeInput').value.trim().toUpperCase();
       const messageDiv = document.getElementById('checkinMessage');
       const submitBtn = document.getElementById('submitBtn');
 
@@ -1457,8 +1814,29 @@
         return;
       }
 
-      if (!studentId || !studentName) {
-        messageDiv.innerHTML = '<div class="error-message">Please fill in all fields</div>';
+      if (!studentId || !studentName || !secretCodeInput) {
+        messageDiv.innerHTML = '<div class="error-message">Please fill in all fields including the secret code</div>';
+        return;
+      }
+
+      // UPDATED: Secret code validation (exact match, case-insensitive)
+      const session = JSON.parse(localStorage.getItem('attendanceSession_' + urlSessionId));
+      if (!session || !session.secretCode) {
+        messageDiv.innerHTML = '<div class="error-message">Session configuration error. Please contact your teacher.</div>';
+        return;
+      }
+
+      if (secretCodeInput !== session.secretCode.toUpperCase()) {
+        messageDiv.innerHTML = '<div class="error-message">❌ Incorrect secret code. Please check with your teacher and try again.</div>';
+        return;
+      }
+
+      // Verify location before allowing submission
+      updateLocationStatus('📍 Verifying your location...', 'checking');
+      const locationAllowed = await checkUserLocation();
+      
+      if (!locationAllowed) {
+        messageDiv.innerHTML = '<div class="error-message">❌ You must be inside the university campus to mark attendance. Please move to the campus and try again.</div>';
         return;
       }
 
@@ -1490,8 +1868,27 @@
           studentId: student.id.toString(),
           name: student.name,
           father: student.father,
-          time: currentTime
+          time: currentTime,
+          secretCode: secretCodeInput, // UPDATED: Store secret code used
+          latitude: null,
+          longitude: null
         };
+
+        // Get current location and store it
+        if (navigator.geolocation) {
+          try {
+            const position = await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 5000
+              });
+            });
+            attendanceData.latitude = position.coords.latitude;
+            attendanceData.longitude = position.coords.longitude;
+          } catch (error) {
+            console.warn('Could not get precise location for storage:', error);
+          }
+        }
 
         const originalSessionId = sessionId;
         sessionId = urlSessionId;
@@ -1504,13 +1901,16 @@
           <div class="success-message">
             ✅ Attendance marked successfully!<br>
             Student: ${student.name}<br>
-            Time: ${currentTime}
+            Time: ${currentTime}<br>
+            📍 Location verified<br>
+            🔑 Secret code accepted
             ${firebaseSaved ? '<br>📡 Synced with server' : '<br>💾 Saved locally'}
           </div>
         `;
 
         document.getElementById('studentId').value = '';
         document.getElementById('studentName').value = '';
+        document.getElementById('secretCodeInput').value = '';
 
         if (currentSession && currentSession.sessionId === urlSessionId) {
           attendance[student.id] = true;
@@ -1518,12 +1918,21 @@
           renderTable();
         }
 
+        // Disable form after successful submission
+        document.getElementById('studentId').disabled = true;
+        document.getElementById('studentName').disabled = true;
+        document.getElementById('secretCodeInput').disabled = true;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Attendance Marked ✓';
+
       } catch (error) {
         console.error('Error submitting attendance:', error);
         messageDiv.innerHTML = '<div class="error-message">Error submitting attendance. Please try again.</div>';
       } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Mark Me Present';
+        if (!messageDiv.innerHTML.includes('success-message')) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Mark Me Present';
+        }
       }
     }
 
@@ -1531,13 +1940,28 @@
     document.addEventListener('DOMContentLoaded', function() {
       console.log('🚀 GNDU Attendance System starting...');
 
+      // Check authentication status on page load
+      if (checkAuthStatus()) {
+        showDashboard();
+      } else {
+        showLoginScreen();
+      }
+
       const today = new Date().toISOString().split('T')[0];
       document.getElementById('attendanceDate').value = today;
       
       document.getElementById('attendanceDate').addEventListener('change', validateForm);
       document.getElementById('subjectCode').addEventListener('change', validateForm);
+      document.getElementById('secretCode').addEventListener('input', validateForm); // UPDATED
       document.getElementById('startBtn').addEventListener('click', startAttendance);
       
+      // Login form enter key handling
+      document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          handleLogin();
+        }
+      });
+
       if (document.getElementById('search')) {
         document.getElementById('search').addEventListener('keyup', renderTable);
       }
@@ -1551,11 +1975,13 @@
         showStudentCheckin(sessionParam);
       } else {
         setTimeout(() => {
-          validateForm();
+          if (checkAuthStatus()) {
+            validateForm();
+          }
         }, 100);
       }
 
-      console.log('✅ GNDU Attendance System initialized');
+      console.log('✅ GNDU Attendance System initialized with authorization and secret code');
     });
 
     window.addEventListener('beforeunload', function() {
@@ -1566,6 +1992,8 @@
     window.submitAttendance = submitAttendance;
     window.copyLink = copyLink;
     window.shareWhatsApp = shareWhatsApp;
+    window.handleLogin = handleLogin;
+    window.handleLogout = handleLogout;
   </script>
 </body>
 </html>
