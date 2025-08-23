@@ -1,1999 +1,1999 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GNDU Attendance System - Computer Engineering & Technology</title>
-  
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNDU Attendance System - Computer Engineering & Technology</title>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+
+      /* Login screen styles */
+      .login-container {
+        max-width: 400px;
+        margin: 100px auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+
+      .login-header {
+        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .login-header h1 {
+        font-size: 1.8rem;
+        margin-bottom: 10px;
+        font-weight: 300;
+      }
+
+      .login-form {
+        padding: 40px;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        font-weight: 300;
+      }
+
+      .header p {
+        font-size: 1.1rem;
+        opacity: 0.9;
+      }
+
+      /* Logout button */
+      .logout-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
+      }
+
+      .logout-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .setup-section {
+        padding: 40px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e9ecef;
+      }
 
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-
-    /* Login screen styles */
-    .login-container {
-      max-width: 400px;
-      margin: 100px auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-
-    .login-header {
-      background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-      color: white;
-      padding: 30px;
-      text-align: center;
-    }
-
-    .login-header h1 {
-      font-size: 1.8rem;
-      margin-bottom: 10px;
-      font-weight: 300;
-    }
-
-    .login-form {
-      padding: 40px;
-    }
-
-    .header {
-      background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-      color: white;
-      padding: 30px;
-      text-align: center;
-    }
-
-    .header h1 {
-      font-size: 2.5rem;
-      margin-bottom: 10px;
-      font-weight: 300;
-    }
-
-    .header p {
-      font-size: 1.1rem;
-      opacity: 0.9;
-    }
-
-    /* Logout button */
-    .logout-btn {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: all 0.2s ease;
-    }
-
-    .logout-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    .setup-section {
-      padding: 40px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #e9ecef;
-    }
-
-    .setup-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .form-group label {
-      font-weight: 600;
-      color: #2c3e50;
-      margin-bottom: 8px;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .form-group input,
-    .form-group select {
-      padding: 12px 16px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: all 0.3s ease;
-      background: white;
-      font-family: inherit;
-    }
-
-    .form-group input:focus,
-    .form-group select:focus {
-      outline: none;
-      border-color: #3498db;
-      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-    }
-
-    /* UPDATED: Secret code input styling */
-    .secret-code-input {
-      background: linear-gradient(45deg, #fff3cd, #ffeaa7) !important;
-      border: 2px solid #f39c12 !important;
-      font-weight: 600;
-      text-align: center;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-
-    .secret-code-input:focus {
-      border-color: #e74c3c !important;
-      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2) !important;
-    }
-
-    .start-btn, .login-btn {
-      background: linear-gradient(135deg, #e74c3c 0%, #f39c12 100%);
-      color: white;
-      padding: 15px 30px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      width: 100%;
-    }
-
-    .start-btn:hover, .login-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(231, 76, 60, 0.3);
-    }
-
-    .start-btn:disabled, .login-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-    }
-
-    .attendance-section {
-      padding: 40px;
-      display: none;
-    }
-
-    .link-section {
-      background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 15px;
-      margin-bottom: 30px;
-      text-align: center;
-    }
-
-    .link-container {
-      background: rgba(255,255,255,0.2);
-      padding: 20px;
-      border-radius: 10px;
-      margin: 20px 0;
-    }
-
-    .session-url {
-      background: white;
-      color: #333;
-      padding: 15px 20px;
-      border-radius: 8px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 0.95rem;
-      margin-bottom: 15px;
-      border: 2px solid #e9ecef;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      user-select: all;
-    }
-
-    .session-url:hover {
-      background: #f8f9fa;
-      border-color: #3498db;
-    }
-
-    .session-url:active {
-      background: #e9ecef;
-    }
-
-    .share-buttons {
-      display: flex;
-      gap: 15px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    .share-btn {
-      background: white;
-      color: #e67e22;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.95rem;
-    }
-
-    .share-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-      background: #f8f9fa;
-    }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      margin-bottom: 30px;
-      align-items: end;
-    }
-
-    .search-box {
-      flex: 1;
-      min-width: 250px;
-    }
-
-    .search-box input {
-      width: 100%;
-      padding: 12px 16px;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
-      font-size: 1rem;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 15px;
-      margin-bottom: 30px;
-    }
-
-    .stat-card {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 10px;
-      text-align: center;
-    }
-
-    .stat-number {
-      font-size: 2rem;
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-
-    .stat-label {
-      font-size: 0.9rem;
-      opacity: 0.9;
-    }
-
-    .table-container {
-      background: white;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: thin;
-      scrollbar-color: #3498db #f1f1f1;
-    }
-
-    .table-container::-webkit-scrollbar {
-      height: 8px;
-    }
-
-    .table-container::-webkit-scrollbar-track {
-      background: #f1f1f1;
-      border-radius: 10px;
-    }
-
-    .table-container::-webkit-scrollbar-thumb {
-      background: #3498db;
-      border-radius: 10px;
-    }
-
-    .table-container::-webkit-scrollbar-thumb:hover {
-      background: #2980b9;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 600px;
-    }
-
-    th {
-      background: #2c3e50;
-      color: white;
-      padding: 15px 12px;
-      text-align: left;
-      font-weight: 600;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      white-space: nowrap;
-      position: relative;
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 0.2s ease;
-    }
-
-    th:first-child {
-      cursor: default;
-    }
-
-    th:hover:not(:first-child) {
-      background: #34495e;
-    }
-
-    th.sorted {
-      background: #e74c3c;
-    }
-
-    th:not(:first-child)::after {
-      content: "⇅";
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      opacity: 0.6;
-      font-size: 0.8rem;
-    }
-
-    th.sorted::after {
-      opacity: 1;
-    }
-
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #e9ecef;
-      white-space: nowrap;
-    }
-
-    tr:hover {
-      background: #f8f9fa;
-    }
-
-    .present {
-      background: linear-gradient(90deg, #c8e6c9, #e8f5e8) !important;
-    }
-
-    .present td {
-      color: #2e7d2e;
-      font-weight: 500;
-    }
-
-    .status-present {
-      background: #27ae60;
-      color: white;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .status-absent {
-      background: #e74c3c;
-      color: white;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .current-class-info {
-      background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 10px;
-      margin-bottom: 20px;
-      position: relative;
-    }
-
-    .current-class-info h3 {
-      margin-bottom: 10px;
-      font-size: 1.3rem;
-    }
-
-    .class-details {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-      font-size: 0.95rem;
-    }
-
-    /* UPDATED: Secret code display */
-    .secret-code-info {
-      background: rgba(255, 255, 255, 0.2);
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 15px;
-      text-align: center;
-    }
-
-    .secret-code-display {
-      background: rgba(255, 255, 255, 0.3);
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: 3px;
-      color: #ffd700;
-      text-transform: uppercase;
-      margin-top: 10px;
-      border: 2px dashed rgba(255, 255, 255, 0.5);
-    }
-
-    .checkin-container {
-      max-width: 500px;
-      margin: 50px auto;
-      background: white;
-      border-radius: 15px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-      overflow: hidden;
-    }
-
-    .checkin-header {
-      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-      color: white;
-      padding: 30px;
-      text-align: center;
-    }
-
-    .checkin-form {
-      padding: 40px;
-    }
-
-    .checkin-form .form-group {
-      margin-bottom: 20px;
-    }
-
-    .checkin-btn {
-      background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
-      color: white;
-      padding: 15px 30px;
-      border: none;
-      border-radius: 8px;
-      font-size: 1.1rem;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
-      transition: all 0.3s ease;
-    }
-
-    .checkin-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
-    }
-
-    .checkin-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .message {
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 20px;
-      text-align: center;
-      font-weight: 600;
-    }
-
-    .success-message {
-      background: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-
-    .error-message {
-      background: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-
-    .location-status {
-      background: #fff3cd;
-      border: 1px solid #ffeaa7;
-      padding: 15px;
-      margin-bottom: 20px;
-      border-radius: 8px;
-      text-align: center;
-      font-weight: 600;
-    }
-
-    .location-status.allowed {
-      background: #d4edda;
-      border-color: #c3e6cb;
-      color: #155724;
-    }
-
-    .location-status.denied {
-      background: #f8d7da;
-      border-color: #f5c6cb;
-      color: #721c24;
-    }
-
-    .location-status.checking {
-      background: #d1ecf1;
-      border-color: #b8daff;
-      color: #0c5460;
-    }
-
-    .loading-message {
-      background: #fff3cd;
-      border: 1px solid #ffeaa7;
-      padding: 15px;
-      margin: 20px 0;
-      border-radius: 8px;
-      text-align: center;
-      color: #856404;
-    }
-
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #27ae60;
-      color: white;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-      transform: translateX(400px);
-      transition: all 0.3s ease;
-      z-index: 1000;
-      max-width: 350px;
-    }
-
-    .notification.show {
-      transform: translateX(0);
-    }
-
-    .notification.error {
-      background: #e74c3c;
-    }
-
-    .firebase-status {
-      background: #e7f3ff;
-      border: 1px solid #b3d9ff;
-      padding: 15px;
-      margin: 20px 0;
-      border-radius: 8px;
-      text-align: center;
-      font-size: 0.9rem;
-      color: #0066cc;
-    }
-
-    .firebase-status.connected {
-      background: #d4edda;
-      border-color: #c3e6cb;
-      color: #155724;
-    }
-
-    .firebase-status.error {
-      background: #f8d7da;
-      border-color: #f5c6cb;
-      color: #721c24;
-    }
-
-    .scroll-hint {
-      display: none;
-      text-align: center;
-      font-size: 0.85rem;
-      color: #666;
-      margin-top: 10px;
-      font-style: italic;
-    }
-
-    @media (max-width: 768px) {
       .setup-grid {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
       }
-      
-      .controls {
+
+      .form-group {
+        display: flex;
         flex-direction: column;
-        align-items: stretch;
       }
-      
-      .stats {
-        grid-template-columns: repeat(2, 1fr);
+
+      .form-group label {
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 8px;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
-      
-      th, td {
-        padding: 10px 8px;
-        font-size: 0.8rem;
+
+      .form-group input,
+      .form-group select {
+        padding: 12px 16px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        background: white;
+        font-family: inherit;
+      }
+
+      .form-group input:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+      }
+
+      /* UPDATED: Secret code input styling */
+      .secret-code-input {
+        background: linear-gradient(45deg, #fff3cd, #ffeaa7) !important;
+        border: 2px solid #f39c12 !important;
+        font-weight: 600;
+        text-align: center;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+
+      .secret-code-input:focus {
+        border-color: #e74c3c !important;
+        box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.2) !important;
+      }
+
+      .start-btn, .login-btn {
+        background: linear-gradient(135deg, #e74c3c 0%, #f39c12 100%);
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        width: 100%;
+      }
+
+      .start-btn:hover, .login-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(231, 76, 60, 0.3);
+      }
+
+      .start-btn:disabled, .login-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .attendance-section {
+        padding: 40px;
+        display: none;
+      }
+
+      .link-section {
+        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .link-container {
+        background: rgba(255,255,255,0.2);
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+      }
+
+      .session-url {
+        background: white;
+        color: #333;
+        padding: 15px 20px;
+        border-radius: 8px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.95rem;
+        margin-bottom: 15px;
+        border: 2px solid #e9ecef;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: all;
+      }
+
+      .session-url:hover {
+        background: #f8f9fa;
+        border-color: #3498db;
+      }
+
+      .session-url:active {
+        background: #e9ecef;
       }
 
       .share-buttons {
-        flex-direction: column;
-        gap: 10px;
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        flex-wrap: wrap;
       }
 
-      .scroll-hint {
-        display: block;
+      .share-btn {
+        background: white;
+        color: #e67e22;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.95rem;
+      }
+
+      .share-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        background: #f8f9fa;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-bottom: 30px;
+        align-items: end;
+      }
+
+      .search-box {
+        flex: 1;
+        min-width: 250px;
+      }
+
+      .search-box input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 1rem;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 30px;
+      }
+
+      .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
       }
 
       .table-container {
-        position: relative;
-        margin-bottom: 20px;
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: #3498db #f1f1f1;
       }
 
-      .table-container::after {
-        content: "👈 Swipe left to see more";
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: rgba(52, 152, 219, 0.9);
-        color: white;
-        padding: 5px 10px;
-        border-radius: 15px;
-        font-size: 0.75rem;
-        pointer-events: none;
-        animation: fadeInOut 3s infinite;
+      .table-container::-webkit-scrollbar {
+        height: 8px;
       }
 
-      @keyframes fadeInOut {
-        0%, 100% { opacity: 0; }
-        50% { opacity: 1; }
+      .table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
       }
 
-      table {
-        min-width: 700px;
+      .table-container::-webkit-scrollbar-thumb {
+        background: #3498db;
+        border-radius: 10px;
       }
 
-      th:nth-child(1), td:nth-child(1) { min-width: 50px; }
-      th:nth-child(2), td:nth-child(2) { min-width: 100px; }
-      th:nth-child(3), td:nth-child(3) { min-width: 150px; }
-      th:nth-child(4), td:nth-child(4) { min-width: 150px; }
-      th:nth-child(5), td:nth-child(5) { min-width: 80px; }
-      th:nth-child(6), td:nth-child(6) { min-width: 120px; }
-
-      .session-url {
-        font-size: 0.8rem;
-        padding: 12px 15px;
-      }
-
-      .secret-code-display {
-        font-size: 1.2rem;
-        letter-spacing: 2px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .attendance-section {
-        padding: 20px;
-      }
-      
-      th, td {
-        padding: 8px 6px;
-        font-size: 0.75rem;
+      .table-container::-webkit-scrollbar-thumb:hover {
+        background: #2980b9;
       }
 
       table {
+        width: 100%;
+        border-collapse: collapse;
         min-width: 600px;
       }
 
-      th:nth-child(3), td:nth-child(3) { min-width: 120px; }
-      th:nth-child(4), td:nth-child(4) { min-width: 120px; }
+      th {
+        background: #2c3e50;
+        color: white;
+        padding: 15px 12px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.2s ease;
+      }
 
-      .session-url {
-        font-size: 0.75rem;
-        padding: 10px 12px;
+      th:first-child {
+        cursor: default;
+      }
+
+      th:hover:not(:first-child) {
+        background: #34495e;
+      }
+
+      th.sorted {
+        background: #e74c3c;
+      }
+
+      th:not(:first-child)::after {
+        content: "⇅";
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0.6;
+        font-size: 0.8rem;
+      }
+
+      th.sorted::after {
+        opacity: 1;
+      }
+
+      td {
+        padding: 12px;
+        border-bottom: 1px solid #e9ecef;
+        white-space: nowrap;
+      }
+
+      tr:hover {
+        background: #f8f9fa;
+      }
+
+      .present {
+        background: linear-gradient(90deg, #c8e6c9, #e8f5e8) !important;
+      }
+
+      .present td {
+        color: #2e7d2e;
+        font-weight: 500;
+      }
+
+      .status-present {
+        background: #27ae60;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .status-absent {
+        background: #e74c3c;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .current-class-info {
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        position: relative;
+      }
+
+      .current-class-info h3 {
+        margin-bottom: 10px;
+        font-size: 1.3rem;
+      }
+
+      .class-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        font-size: 0.95rem;
+      }
+
+      /* UPDATED: Secret code display */
+      .secret-code-info {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+        text-align: center;
       }
 
       .secret-code-display {
-        font-size: 1rem;
-        letter-spacing: 1px;
+        background: rgba(255, 255, 255, 0.3);
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: 3px;
+        color: #ffd700;
+        text-transform: uppercase;
+        margin-top: 10px;
+        border: 2px dashed rgba(255, 255, 255, 0.5);
       }
-    }
-  </style>
-</head>
-<body>
-  <!-- Login Screen -->
-  <div class="login-container" id="loginScreen">
-    <div class="login-header">
-      <h1>🔐 Secure Login</h1>
-      <p>GNDU Attendance System</p>
-    </div>
-    <div class="login-form">
-      <div class="form-group">
-        <label for="loginEmail">Email Address</label>
-        <input type="email" id="loginEmail" placeholder="Enter your email" required>
-      </div>
-      <div class="form-group">
-        <label for="loginPassword">Password</label>
-        <input type="password" id="loginPassword" placeholder="Enter your password" required>
-      </div>
-      <button class="login-btn" id="loginBtn" onclick="handleLogin()">Login</button>
-      <div id="loginMessage"></div>
-    </div>
-  </div>
 
-  <!-- Teacher Dashboard -->
-  <div class="container" id="teacherDashboard" style="display: none;">
-    <div class="header">
-      <button class="logout-btn" onclick="handleLogout()">🚪 Logout</button>
-      <h1>GNDU Attendance System</h1>
-      <p>Department of Computer Engineering & Technology</p>
-    </div>
+      .checkin-container {
+        max-width: 500px;
+        margin: 50px auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
 
-    <div class="setup-section" id="setupSection">
-      <div class="setup-grid">
+      .checkin-header {
+        background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .checkin-form {
+        padding: 40px;
+      }
+
+      .checkin-form .form-group {
+        margin-bottom: 20px;
+      }
+
+      .checkin-btn {
+        background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+        color: white;
+        padding: 15px 30px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.3s ease;
+      }
+
+      .checkin-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(39, 174, 96, 0.3);
+      }
+
+      .checkin-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .message {
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        text-align: center;
+        font-weight: 600;
+      }
+
+      .success-message {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .error-message {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+
+      .location-status {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: 600;
+      }
+
+      .location-status.allowed {
+        background: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+      }
+
+      .location-status.denied {
+        background: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+      }
+
+      .location-status.checking {
+        background: #d1ecf1;
+        border-color: #b8daff;
+        color: #0c5460;
+      }
+
+      .loading-message {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 8px;
+        text-align: center;
+        color: #856404;
+      }
+
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #27ae60;
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        transform: translateX(400px);
+        transition: all 0.3s ease;
+        z-index: 1000;
+        max-width: 350px;
+      }
+
+      .notification.show {
+        transform: translateX(0);
+      }
+
+      .notification.error {
+        background: #e74c3c;
+      }
+
+      .firebase-status {
+        background: #e7f3ff;
+        border: 1px solid #b3d9ff;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #0066cc;
+      }
+
+      .firebase-status.connected {
+        background: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+      }
+
+      .firebase-status.error {
+        background: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+      }
+
+      .scroll-hint {
+        display: none;
+        text-align: center;
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 10px;
+        font-style: italic;
+      }
+
+      @media (max-width: 768px) {
+        .setup-grid {
+          grid-template-columns: 1fr;
+        }
+        
+        .controls {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        
+        th, td {
+          padding: 10px 8px;
+          font-size: 0.8rem;
+        }
+
+        .share-buttons {
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .scroll-hint {
+          display: block;
+        }
+
+        .table-container {
+          position: relative;
+          margin-bottom: 20px;
+        }
+
+        .table-container::after {
+          content: "👈 Swipe left to see more";
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(52, 152, 219, 0.9);
+          color: white;
+          padding: 5px 10px;
+          border-radius: 15px;
+          font-size: 0.75rem;
+          pointer-events: none;
+          animation: fadeInOut 3s infinite;
+        }
+
+        @keyframes fadeInOut {
+          0%, 100% { opacity: 0; }
+          50% { opacity: 1; }
+        }
+
+        table {
+          min-width: 700px;
+        }
+
+        th:nth-child(1), td:nth-child(1) { min-width: 50px; }
+        th:nth-child(2), td:nth-child(2) { min-width: 100px; }
+        th:nth-child(3), td:nth-child(3) { min-width: 150px; }
+        th:nth-child(4), td:nth-child(4) { min-width: 150px; }
+        th:nth-child(5), td:nth-child(5) { min-width: 80px; }
+        th:nth-child(6), td:nth-child(6) { min-width: 120px; }
+
+        .session-url {
+          font-size: 0.8rem;
+          padding: 12px 15px;
+        }
+
+        .secret-code-display {
+          font-size: 1.2rem;
+          letter-spacing: 2px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .attendance-section {
+          padding: 20px;
+        }
+        
+        th, td {
+          padding: 8px 6px;
+          font-size: 0.75rem;
+        }
+
+        table {
+          min-width: 600px;
+        }
+
+        th:nth-child(3), td:nth-child(3) { min-width: 120px; }
+        th:nth-child(4), td:nth-child(4) { min-width: 120px; }
+
+        .session-url {
+          font-size: 0.75rem;
+          padding: 10px 12px;
+        }
+
+        .secret-code-display {
+          font-size: 1rem;
+          letter-spacing: 1px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login Screen -->
+    <div class="login-container" id="loginScreen">
+      <div class="login-header">
+        <h1>🔐 Secure Login</h1>
+        <p>GNDU Attendance System</p>
+      </div>
+      <div class="login-form">
         <div class="form-group">
-          <label for="attendanceDate">Select Date</label>
-          <input type="date" id="attendanceDate" required>
+          <label for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" placeholder="Enter your email" required>
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter your password" required>
+        </div>
+        <button class="login-btn" id="loginBtn" onclick="handleLogin()">Login</button>
+        <div id="loginMessage"></div>
+      </div>
+    </div>
+
+    <!-- Teacher Dashboard -->
+    <div class="container" id="teacherDashboard" style="display: none;">
+      <div class="header">
+        <button class="logout-btn" onclick="handleLogout()">🚪 Logout</button>
+        <h1>GNDU Attendance System</h1>
+        <p>Department of Computer Engineering & Technology</p>
+      </div>
+
+      <div class="setup-section" id="setupSection">
+        <div class="setup-grid">
+          <div class="form-group">
+            <label for="attendanceDate">Select Date</label>
+            <input type="date" id="attendanceDate" required>
+          </div>
+
+          <div class="form-group">
+            <label for="subjectCode">Subject</label>
+            <select id="subjectCode" required>
+              <option value="">Select Subject</option>
+              <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
+              <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
+              <option value="MTL1001">MTL1001 - Mathematics I</option>
+              <option value="PHL1083">PHL1083 - Physics</option>
+              <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
+              <option value="PBL1022">PBL1022 - Basic Punjabi</option>
+              <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
+            </select>
+          </div>
+
+          <!-- UPDATED: Secret Code Field -->
+          <div class="form-group">
+            <label for="secretCode">Secret Code</label>
+            <input autocomplete="off" type="text" id="secretCode" class="secret-code-input" placeholder="Set the Secret Code" required maxlength="20">
+            <small style="color: #666; margin-top: 5px; display: block;">Students must enter this exact code to mark attendance</small>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label for="subjectCode">Subject</label>
-          <select id="subjectCode" required>
-            <option value="">Select Subject</option>
-            <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
-            <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
-            <option value="MTL1001">MTL1001 - Mathematics I</option>
-            <option value="PHL1083">PHL1083 - Physics</option>
-            <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
-            <option value="PBL1022">PBL1022 - Basic Punjabi</option>
-            <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
-          </select>
+        <div class="firebase-status" id="firebaseStatus">
+          🔄 Connecting to Firebase...
+        </div>
+
+        <div class="loading-message" id="loadingMessage">
+          📄 Loading student data...
+        </div>
+
+        <button class="start-btn" id="startBtn" disabled>
+          Start Attendance Session
+        </button>
+      </div>
+
+      <div class="attendance-section" id="attendanceSection">
+        <div class="current-class-info" id="classInfo">
+          <!-- Secret code will be displayed here -->
+        </div>
+        
+        <div class="link-section">
+          <h3>🔗 Student Check-in Link</h3>
+          <p>Share this link with students to mark their attendance</p>
+          <div class="link-container">
+            <div class="session-url" id="sessionUrl" onclick="copyLink()" title="Click to copy link"></div>
+            <div class="share-buttons">
+              <button class="share-btn" onclick="copyLink()">
+                📋 Copy Link
+              </button>
+              <button class="share-btn" onclick="shareWhatsApp()">
+                📱 Share on WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="stats" id="statsSection">
+          <div class="stat-card">
+            <div class="stat-number" id="totalStudents">0</div>
+            <div class="stat-label">Total Students</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="presentCount">0</div>
+            <div class="stat-label">Present</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="absentCount">0</div>
+            <div class="stat-label">Absent</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="attendancePercent">0%</div>
+            <div class="stat-label">Attendance</div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <div class="search-box">
+            <input type="text" id="search" placeholder="Search students by name or father's name...">
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th id="studentIdHeader">Student ID</th>
+                <th id="nameHeader">Name</th>
+                <th id="fatherHeader">Father's Name</th>
+                <th id="statusHeader">Status</th>
+                <th id="timeHeader">Check-in Time</th>
+              </tr>
+            </thead>
+            <tbody id="studentTable"></tbody>
+          </table>
+        </div>
+        <div class="scroll-hint">💡 Swipe left/right to view all columns • Click column headers to sort</div>
+      </div>
+    </div>
+
+    <!-- Student Check-in Interface -->
+    <div class="checkin-container" id="studentCheckin" style="display: none;">
+      <div class="checkin-header">
+        <h2>✓ Mark Attendance</h2>
+        <p>GNDU Attendance System</p>
+        <p id="checkinClassInfo"></p>
+      </div>
+      <div class="checkin-form">
+        <div class="location-status checking" id="locationStatus">
+          📍 Checking your location...
         </div>
 
         <!-- UPDATED: Secret Code Field -->
         <div class="form-group">
-          <label for="secretCode">Secret Code</label>
-          <input autocomplete="off" type="text" id="secretCode" class="secret-code-input" placeholder="Set the Secret Code" required maxlength="20">
-          <small style="color: #666; margin-top: 5px; display: block;">Students must enter this exact code to mark attendance</small>
+          <label for="secretCodeInput">🔑 Secret Code</label>
+          <input type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
+          <small style="color: #666; margin-top: 5px; display: block;">Ask your teacher for the secret code</small>
         </div>
-      </div>
 
-      <div class="firebase-status" id="firebaseStatus">
-        🔄 Connecting to Firebase...
+        <div class="form-group">
+          <label for="studentId">Student ID</label>
+          <input type="text" id="studentId" placeholder="Enter your Student ID" required>
+        </div>
+        <div class="form-group">
+          <label for="studentName">Full Name</label>
+          <input type="text" id="studentName" placeholder="Enter your Full Name" required>
+        </div>
+        <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()" disabled>Mark Me Present</button>
+        <div id="checkinMessage"></div>
       </div>
-
-      <div class="loading-message" id="loadingMessage">
-        📄 Loading student data...
-      </div>
-
-      <button class="start-btn" id="startBtn" disabled>
-        Start Attendance Session
-      </button>
     </div>
 
-    <div class="attendance-section" id="attendanceSection">
-      <div class="current-class-info" id="classInfo">
-        <!-- Secret code will be displayed here -->
-      </div>
-      
-      <div class="link-section">
-        <h3>🔗 Student Check-in Link</h3>
-        <p>Share this link with students to mark their attendance</p>
-        <div class="link-container">
-          <div class="session-url" id="sessionUrl" onclick="copyLink()" title="Click to copy link"></div>
-          <div class="share-buttons">
-            <button class="share-btn" onclick="copyLink()">
-              📋 Copy Link
-            </button>
-            <button class="share-btn" onclick="shareWhatsApp()">
-              📱 Share on WhatsApp
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      <div class="stats" id="statsSection">
-        <div class="stat-card">
-          <div class="stat-number" id="totalStudents">0</div>
-          <div class="stat-label">Total Students</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="presentCount">0</div>
-          <div class="stat-label">Present</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="absentCount">0</div>
-          <div class="stat-label">Absent</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="attendancePercent">0%</div>
-          <div class="stat-label">Attendance</div>
-        </div>
-      </div>
+    <!-- Notification -->
+    <div class="notification" id="notification"></div>
 
-      <div class="controls">
-        <div class="search-box">
-          <input type="text" id="search" placeholder="Search students by name or father's name...">
-        </div>
-      </div>
-
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>S.No</th>
-              <th id="studentIdHeader">Student ID</th>
-              <th id="nameHeader">Name</th>
-              <th id="fatherHeader">Father's Name</th>
-              <th id="statusHeader">Status</th>
-              <th id="timeHeader">Check-in Time</th>
-            </tr>
-          </thead>
-          <tbody id="studentTable"></tbody>
-        </table>
-      </div>
-      <div class="scroll-hint">💡 Swipe left/right to view all columns • Click column headers to sort</div>
-    </div>
-  </div>
-
-  <!-- Student Check-in Interface -->
-  <div class="checkin-container" id="studentCheckin" style="display: none;">
-    <div class="checkin-header">
-      <h2>✓ Mark Attendance</h2>
-      <p>GNDU Attendance System</p>
-      <p id="checkinClassInfo"></p>
-    </div>
-    <div class="checkin-form">
-      <div class="location-status checking" id="locationStatus">
-        📍 Checking your location...
-      </div>
-
-      <!-- UPDATED: Secret Code Field -->
-      <div class="form-group">
-        <label for="secretCodeInput">🔑 Secret Code</label>
-        <input type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
-        <small style="color: #666; margin-top: 5px; display: block;">Ask your teacher for the secret code</small>
-      </div>
-
-      <div class="form-group">
-        <label for="studentId">Student ID</label>
-        <input type="text" id="studentId" placeholder="Enter your Student ID" required>
-      </div>
-      <div class="form-group">
-        <label for="studentName">Full Name</label>
-        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
-      </div>
-      <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()" disabled>Mark Me Present</button>
-      <div id="checkinMessage"></div>
-    </div>
-  </div>
-
-  <!-- Notification -->
-  <div class="notification" id="notification"></div>
-
-  <!-- Load students.js -->
-  <script src="students.js"></script>
-  <script>
-    // Firebase Configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
-      authDomain: "gndu-attendance-system.firebaseapp.com",
-      projectId: "gndu-attendance-system",
-      storageBucket: "gndu-attendance-system.firebasestorage.app",
-      messagingSenderId: "874240831454",
-      appId: "1:874240831454:web:5358a9e3016b9df1e0f74f",
-      measurementId: "G-0XCLY4F1YH"
-    };
-
-    // Authorization credentials
-    const AUTHORIZED_EMAIL = "sahilgupta1750@gmail.com";
-    const AUTHORIZED_PASSWORD = "unknownboy";
-
-    // Initialize Firebase with better error handling
-    let db;
-    let firebaseInitialized = false;
-    
-    try {
-      firebase.initializeApp(firebaseConfig);
-      db = firebase.firestore();
-      
-      db.enableNetwork().then(() => {
-        firebaseInitialized = true;
-        updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
-        console.log('✅ Firebase initialized and connected successfully');
-      }).catch((error) => {
-        console.warn('⚠️ Firebase network error:', error);
-        updateFirebaseStatus('⚠️ Firebase connection issues - working offline', 'error');
-      });
-      
-    } catch (error) {
-      console.warn('⚠️ Firebase initialization failed:', error);
-      updateFirebaseStatus('⚠️ Firebase unavailable - working in offline mode', 'error');
-    }
-
-    let attendance = {};
-    let attendanceTime = {};
-    let currentSession = null;
-    let sessionId = null;
-    let checkinUrl = '';
-    let attendanceListener = null;
-    let sessionSecretCode = ''; // UPDATED: Store secret code
-
-    // Sorting variables
-    let sortColumn = null;
-    let sortAsc = true;
-    let statusSortMode = null;
-
-    // Location checking variables
-    const UNIVERSITY_LAT = 31.635428012027894;
-    const UNIVERSITY_LNG = 74.82433444456309;
-    const ALLOWED_RADIUS_METERS = 150;
-
-    // Timetable data
-    const timetable = {
-      'Monday': {
-        '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-        '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
-        '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
-        '12:00-12:55': { 'CEL1020': 'Sahil Sharma' },
-        '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
-        '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
-      },
-      'Tuesday': {
-        '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-        '10:00-10:55': { 'PHL1083': 'Dr. Vaishali' },
-        '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
-        '12:00-12:55': { 'CEL1020': 'Sahil Sharma' }
-      },
-      'Wednesday': {
-        '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-        '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
-        '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
-        '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
-        '03:00-03:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-        '04:00-04:55': { 'MTL1001': 'Dr. Ramandeep Kaur' }
-      },
-      'Thursday': {
-        '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-        '10:00-10:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-        '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' }
-      },
-      'Friday': {
-        '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-        '10:00-10:55': { 'CEL1020': 'Sahil Sharma' },
-        '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
-        '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
-      }
-    };
-
-    const subjectNames = {
-      'CEL1020': 'Engineering Mechanics',
-      'MEL1021': 'Engineering Graphics & Drafting', 
-      'MTL1001': 'Mathematics I',
-      'PHL1083': 'Physics',
-      'PBL1021': 'Punjabi (Compulsory)',
-      'PBL1022': 'Basic Punjabi',
-      'HSL4000': 'Punjab History & Culture'
-    };
-
-    // Authorization functions
-    function handleLogin() {
-      const email = document.getElementById('loginEmail').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      const messageDiv = document.getElementById('loginMessage');
-      const loginBtn = document.getElementById('loginBtn');
-
-      if (!email || !password) {
-        messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
-        return;
-      }
-
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'Verifying...';
-
-      setTimeout(() => {
-        if (email === AUTHORIZED_EMAIL && password === AUTHORIZED_PASSWORD) {
-          messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
-          
-          localStorage.setItem('gndu_logged_in', 'true');
-          localStorage.setItem('gndu_login_time', Date.now().toString());
-          
-          setTimeout(() => {
-            showDashboard();
-          }, 1000);
-        } else {
-          messageDiv.innerHTML = '<div class="error-message">❌ Invalid email or password. Access denied.</div>';
-          loginBtn.disabled = false;
-          loginBtn.textContent = 'Login';
-        }
-      }, 1000);
-    }
-
-    function handleLogout() {
-      if (confirm('Are you sure you want to logout?')) {
-        localStorage.removeItem('gndu_logged_in');
-        localStorage.removeItem('gndu_login_time');
-        showLoginScreen();
-        showNotification('👋 Logged out successfully');
-      }
-    }
-
-    function showLoginScreen() {
-      document.getElementById('loginScreen').style.display = 'block';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'none';
-      
-      document.getElementById('loginEmail').value = '';
-      document.getElementById('loginPassword').value = '';
-      document.getElementById('loginMessage').innerHTML = '';
-      document.getElementById('loginBtn').disabled = false;
-      document.getElementById('loginBtn').textContent = 'Login';
-    }
-
-    function showDashboard() {
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'block';
-      document.getElementById('studentCheckin').style.display = 'none';
-    }
-
-    function checkAuthStatus() {
-      const loggedIn = localStorage.getItem('gndu_logged_in');
-      const loginTime = localStorage.getItem('gndu_login_time');
-      
-      const sessionDuration = 24 * 60 * 60 * 1000; // 24 hours
-      const now = Date.now();
-      
-      if (loggedIn === 'true' && loginTime && (now - parseInt(loginTime)) < sessionDuration) {
-        return true;
-      } else {
-        localStorage.removeItem('gndu_logged_in');
-        localStorage.removeItem('gndu_login_time');
-        return false;
-      }
-    }
-
-    // Geolocation functions
-    function toRadians(degrees) {
-      return degrees * (Math.PI / 180);
-    }
-
-    function calculateDistance(lat1, lng1, lat2, lng2) {
-      const R = 6371000;
-      const dLat = toRadians(lat2 - lat1);
-      const dLng = toRadians(lng2 - lng1);
-      const a = 
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
-
-    function updateLocationStatus(message, className) {
-      const statusDiv = document.getElementById('locationStatus');
-      if (statusDiv) {
-        statusDiv.textContent = message;
-        statusDiv.className = `location-status ${className}`;
-      }
-    }
-
-    async function checkUserLocation() {
-      if (!navigator.geolocation) {
-        updateLocationStatus('❌ Location services not supported by your browser', 'denied');
-        return false;
-      }
-
-      return new Promise((resolve) => {
-        updateLocationStatus('📍 Getting your location...', 'checking');
-        
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const userLat = position.coords.latitude;
-            const userLng = position.coords.longitude;
-            const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
-            
-            console.log(`📍 User location: ${userLat}, ${userLng}`);
-            console.log(`🏫 University location: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
-            console.log(`📏 Distance from university: ${distance.toFixed(2)} meters`);
-            
-            if (distance <= ALLOWED_RADIUS_METERS) {
-              updateLocationStatus(`✅ You are inside university campus (${distance.toFixed(0)}m from center)`, 'allowed');
-              resolve(true);
-            } else {
-              updateLocationStatus(`❌ You are outside university campus (${distance.toFixed(0)}m away). You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`, 'denied');
-              resolve(false);
-            }
-          },
-          (error) => {
-            console.error('❌ Geolocation error:', error);
-            let errorMessage = '';
-            switch (error.code) {
-              case error.PERMISSION_DENIED:
-                errorMessage = '❌ Location access denied. Please allow location access to mark attendance.';
-                break;
-              case error.POSITION_UNAVAILABLE:
-                errorMessage = '❌ Location information unavailable. Please try again.';
-                break;
-              case error.TIMEOUT:
-                errorMessage = '❌ Location request timed out. Please try again.';
-                break;
-              default:
-                errorMessage = '❌ Unable to get your location. Please try again.';
-                break;
-            }
-            updateLocationStatus(errorMessage, 'denied');
-            resolve(false);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 60000
-          }
-        );
-      });
-    }
-
-    // Sorting functions (unchanged)
-    function compareValues(key, ascending = true) {
-      return function(a, b) {
-        let varA = (a[key] || '').toString().toUpperCase();
-        let varB = (b[key] || '').toString().toUpperCase();
-        
-        if (varA < varB) {
-          return ascending ? -1 : 1;
-        }
-        if (varA > varB) {
-          return ascending ? 1 : -1;
-        }
-        return 0;
+    <!-- Load students.js -->
+    <script src="students.js"></script>
+    <script>
+      // Firebase Configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
+        authDomain: "gndu-attendance-system.firebaseapp.com",
+        projectId: "gndu-attendance-system",
+        storageBucket: "gndu-attendance-system.firebasestorage.app",
+        messagingSenderId: "874240831454",
+        appId: "1:874240831454:web:5358a9e3016b9df1e0f74f",
+        measurementId: "G-0XCLY4F1YH"
       };
-    }
 
-    function customStatusSort(a, b) {
-      const aPresent = !!attendance[a.id];
-      const bPresent = !!attendance[b.id];
-      
-      if (statusSortMode === 'presentFirst') {
-        if (aPresent && !bPresent) return -1;
-        if (!aPresent && bPresent) return 1;
-      } else if (statusSortMode === 'absentFirst') {
-        if (!aPresent && bPresent) return -1;
-        if (aPresent && !bPresent) return 1;
-      }
-      
-      return compareValues('name', true)(a, b);
-    }
+      // Authorization credentials
+      const AUTHORIZED_EMAIL = "sahilgupta1750@gmail.com";
+      const AUTHORIZED_PASSWORD = "unknownboy";
 
-    function sortData(data) {
-      if (!sortColumn) return data;
+      // Initialize Firebase with better error handling
+      let db;
+      let firebaseInitialized = false;
       
-      if (sortColumn === 'status') {
-        return data.sort(customStatusSort);
-      } else if (sortColumn === 'time') {
-        return data.sort((a, b) => {
-          const aTime = attendanceTime[a.id] || '';
-          const bTime = attendanceTime[b.id] || '';
-          
-          if (aTime === '' && bTime !== '') return sortAsc ? 1 : -1;
-          if (bTime === '' && aTime !== '') return sortAsc ? -1 : 1;
-          if (aTime === '' && bTime === '') return 0;
-          
-          return sortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
+      try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        
+        db.enableNetwork().then(() => {
+          firebaseInitialized = true;
+          updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
+          console.log('✅ Firebase initialized and connected successfully');
+        }).catch((error) => {
+          console.warn('⚠️ Firebase network error:', error);
+          updateFirebaseStatus('⚠️ Firebase connection issues - working offline', 'error');
         });
+        
+      } catch (error) {
+        console.warn('⚠️ Firebase initialization failed:', error);
+        updateFirebaseStatus('⚠️ Firebase unavailable - working in offline mode', 'error');
       }
-      
-      return data.sort(compareValues(sortColumn, sortAsc));
-    }
 
-    // Setup sortable column headers
-    function setupSorting() {
-      const headers = {
-        'studentIdHeader': 'id',
-        'nameHeader': 'name',
-        'fatherHeader': 'father',
-        'statusHeader': 'status',
-        'timeHeader': 'time'
+      let attendance = {};
+      let attendanceTime = {};
+      let currentSession = null;
+      let sessionId = null;
+      let checkinUrl = '';
+      let attendanceListener = null;
+      let sessionSecretCode = ''; // UPDATED: Store secret code
+
+      // Sorting variables
+      let sortColumn = null;
+      let sortAsc = true;
+      let statusSortMode = null;
+
+      // Location checking variables
+      const UNIVERSITY_LAT = 31.635089713797168;
+      const UNIVERSITY_LNG = 74.82462040523451;
+      const ALLOWED_RADIUS_METERS = 150;
+
+      // Timetable data
+      const timetable = {
+        'Monday': {
+          '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
+          '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
+          '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
+          '12:00-12:55': { 'CEL1020': 'Sahil Sharma' },
+          '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
+          '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
+        },
+        'Tuesday': {
+          '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
+          '10:00-10:55': { 'PHL1083': 'Dr. Vaishali' },
+          '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
+          '12:00-12:55': { 'CEL1020': 'Sahil Sharma' }
+        },
+        'Wednesday': {
+          '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
+          '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
+          '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
+          '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
+          '03:00-03:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
+          '04:00-04:55': { 'MTL1001': 'Dr. Ramandeep Kaur' }
+        },
+        'Thursday': {
+          '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
+          '10:00-10:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
+          '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' }
+        },
+        'Friday': {
+          '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
+          '10:00-10:55': { 'CEL1020': 'Sahil Sharma' },
+          '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
+          '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
+        }
       };
 
-      Object.keys(headers).forEach(headerId => {
-        const header = document.getElementById(headerId);
-        const columnKey = headers[headerId];
-        
-        if (!header) return;
-        
-        header.dataset.originalText = header.textContent;
-        
-        header.addEventListener('click', function() {
-          Object.keys(headers).forEach(id => {
-            const h = document.getElementById(id);
-            if (h) {
-              h.classList.remove('sorted');
-              h.textContent = h.dataset.originalText;
-            }
-          });
+      const subjectNames = {
+        'CEL1020': 'Engineering Mechanics',
+        'MEL1021': 'Engineering Graphics & Drafting', 
+        'MTL1001': 'Mathematics I',
+        'PHL1083': 'Physics',
+        'PBL1021': 'Punjabi (Compulsory)',
+        'PBL1022': 'Basic Punjabi',
+        'HSL4000': 'Punjab History & Culture'
+      };
 
-          if (columnKey === 'status') {
-            if (sortColumn !== 'status') {
-              sortColumn = 'status';
-              statusSortMode = 'presentFirst';
-              header.textContent = 'Status (Present First)';
-            } else if (statusSortMode === 'presentFirst') {
-              statusSortMode = 'absentFirst';
-              header.textContent = 'Status (Absent First)';
-            } else {
-              sortColumn = null;
-              statusSortMode = null;
-              header.textContent = header.dataset.originalText;
-            }
+      // Authorization functions
+      function handleLogin() {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        const messageDiv = document.getElementById('loginMessage');
+        const loginBtn = document.getElementById('loginBtn');
+
+        if (!email || !password) {
+          messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
+          return;
+        }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Verifying...';
+
+        setTimeout(() => {
+          if (email === AUTHORIZED_EMAIL && password === AUTHORIZED_PASSWORD) {
+            messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
+            
+            localStorage.setItem('gndu_logged_in', 'true');
+            localStorage.setItem('gndu_login_time', Date.now().toString());
+            
+            setTimeout(() => {
+              showDashboard();
+            }, 1000);
           } else {
-            if (sortColumn === columnKey) {
-              sortAsc = !sortAsc;
-            } else {
-              sortColumn = columnKey;
-              sortAsc = false;
-              if (columnKey !== 'name') {
-                sortAsc = true;
-              }
-            }
-            statusSortMode = null;
-            
-            const indicator = sortAsc ? ' ▲' : ' ▼';
-            header.textContent = header.dataset.originalText + indicator;
+            messageDiv.innerHTML = '<div class="error-message">❌ Invalid email or password. Access denied.</div>';
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
           }
-
-          if (sortColumn) {
-            header.classList.add('sorted');
-          }
-
-          renderTable();
-        });
-      });
-    }
-
-    // Enhanced applyFilters function
-    function applyFilters() {
-      if (typeof students === 'undefined' || !Array.isArray(students)) {
-        return [];
+        }, 1000);
       }
 
-      let filtered = students.slice();
-      const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
-
-      if (searchTerm !== '') {
-        filtered = filtered.filter(student => {
-          return student.name.toLowerCase().includes(searchTerm) || 
-                 student.father.toLowerCase().includes(searchTerm) ||
-                 student.id.toLowerCase().includes(searchTerm);
-        });
-        
-        return filtered;
-      }
-
-      return sortData(filtered);
-    }
-
-    // Function to find existing session
-    async function findExistingSession(date, subjectCode) {
-      if (!firebaseInitialized) {
-        console.log('🔍 Firebase not available, checking local storage for existing sessions');
-        
-        const localSessionKey = `session_${date}_${subjectCode}`;
-        const localSession = localStorage.getItem(localSessionKey);
-        if (localSession) {
-          console.log('📂 Found existing session in local storage');
-          return JSON.parse(localSession);
+      function handleLogout() {
+        if (confirm('Are you sure you want to logout?')) {
+          localStorage.removeItem('gndu_logged_in');
+          localStorage.removeItem('gndu_login_time');
+          showLoginScreen();
+          showNotification('👋 Logged out successfully');
         }
-        return null;
       }
 
-      try {
-        console.log('🔍 Searching for existing session:', { date, subjectCode });
+      function showLoginScreen() {
+        document.getElementById('loginScreen').style.display = 'block';
+        document.getElementById('teacherDashboard').style.display = 'none';
+        document.getElementById('studentCheckin').style.display = 'none';
         
-        const sessionsRef = db.collection('attendanceSessions');
-        const querySnapshot = await sessionsRef
-          .where('date', '==', date)
-          .where('subjectCode', '==', subjectCode)
-          .where('status', '==', 'active')
-          .limit(1)
-          .get();
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('loginMessage').innerHTML = '';
+        document.getElementById('loginBtn').disabled = false;
+        document.getElementById('loginBtn').textContent = 'Login';
+      }
 
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          console.log('🎯 Found existing session:', doc.id);
-          return { id: doc.id, ...doc.data() };
+      function showDashboard() {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('teacherDashboard').style.display = 'block';
+        document.getElementById('studentCheckin').style.display = 'none';
+      }
+
+      function checkAuthStatus() {
+        const loggedIn = localStorage.getItem('gndu_logged_in');
+        const loginTime = localStorage.getItem('gndu_login_time');
+        
+        const sessionDuration = 24 * 60 * 60 * 1000; // 24 hours
+        const now = Date.now();
+        
+        if (loggedIn === 'true' && loginTime && (now - parseInt(loginTime)) < sessionDuration) {
+          return true;
+        } else {
+          localStorage.removeItem('gndu_logged_in');
+          localStorage.removeItem('gndu_login_time');
+          return false;
+        }
+      }
+
+      // Geolocation functions
+      function toRadians(degrees) {
+        return degrees * (Math.PI / 180);
+      }
+
+      function calculateDistance(lat1, lng1, lat2, lng2) {
+        const R = 6371000;
+        const dLat = toRadians(lat2 - lat1);
+        const dLng = toRadians(lng2 - lng1);
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      function updateLocationStatus(message, className) {
+        const statusDiv = document.getElementById('locationStatus');
+        if (statusDiv) {
+          statusDiv.textContent = message;
+          statusDiv.className = `location-status ${className}`;
+        }
+      }
+
+      async function checkUserLocation() {
+        if (!navigator.geolocation) {
+          updateLocationStatus('❌ Location services not supported by your browser', 'denied');
+          return false;
         }
 
-        console.log('❌ No existing session found');
-        return null;
-      } catch (error) {
-        console.error('❌ Error searching for existing session:', error);
-        return null;
-      }
-    }
-
-    // Function to load existing attendance data
-    async function loadExistingAttendance(sessionId) {
-      attendance = {};
-      attendanceTime = {};
-
-      if (firebaseInitialized) {
-        try {
-          const attendanceRef = db.collection('attendanceSessions')
-            .doc(sessionId)
-            .collection('attendance');
+        return new Promise((resolve) => {
+          updateLocationStatus('📍 Getting your location...', 'checking');
           
-          const snapshot = await attendanceRef.get();
-          
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            const studentId = doc.id;
-            
-            attendance[studentId] = true;
-            if (data.markedAt && data.markedAt.seconds) {
-              attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
-            } else {
-              attendanceTime[studentId] = data.time || '-';
-            }
-          });
-
-          console.log(`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
-        } catch (error) {
-          console.error('❌ Error loading attendance from Firebase:', error);
-        }
-      }
-
-      const localAttendanceKey = 'attendance_' + sessionId;
-      const localAttendance = JSON.parse(localStorage.getItem(localAttendanceKey) || '{}');
-      
-      Object.keys(localAttendance).forEach(studentId => {
-        if (!attendance[studentId]) {
-          attendance[studentId] = true;
-          attendanceTime[studentId] = localAttendance[studentId].time || '-';
-        }
-      });
-
-      console.log(`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
-    }
-
-    // Firebase Functions
-    function updateFirebaseStatus(message, status) {
-      const statusEl = document.getElementById('firebaseStatus');
-      if (statusEl) {
-        statusEl.textContent = message;
-        statusEl.className = `firebase-status ${status}`;
-      }
-    }
-
-    async function createAttendanceSession(sessionData) {
-      const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
-      localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
-      localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionData));
-
-      if (!firebaseInitialized) {
-        console.log('📂 Session saved to local storage only');
-        return;
-      }
-
-      try {
-        await db.collection('attendanceSessions').doc(sessionData.sessionId).set({
-          ...sessionData,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          status: 'active',
-          totalStudents: students.length,
-          presentCount: 0
-        });
-        console.log('✅ Attendance session created in Firebase');
-      } catch (error) {
-        console.error('❌ Error creating attendance session in Firebase:', error);
-      }
-    }
-
-    async function markStudentPresent(studentId, studentData) {
-      const attendanceKey = 'attendance_' + sessionId;
-      let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-      sessionAttendance[studentId] = studentData;
-      localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
-
-      if (!firebaseInitialized || !studentId || !sessionId) {
-        console.log('📂 Attendance saved to local storage only');
-        return false;
-      }
-
-      try {
-        await db.collection('attendanceSessions')
-          .doc(sessionId)
-          .collection('attendance')
-          .doc(studentId.toString())
-          .set({
-            ...studentData,
-            markedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            timestamp: Date.now()
-          });
-
-        await db.collection('attendanceSessions').doc(sessionId).update({
-          presentCount: firebase.firestore.FieldValue.increment(1),
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        console.log('✅ Student attendance saved to Firebase');
-        return true;
-      } catch (error) {
-        console.error('❌ Error saving attendance to Firebase:', error);
-        return false;
-      }
-    }
-
-    function listenToAttendanceUpdates() {
-      if (!firebaseInitialized || !sessionId) return;
-
-      console.log('🔄 Starting to listen for attendance updates...');
-
-      if (attendanceListener) {
-        attendanceListener();
-        attendanceListener = null;
-      }
-
-      attendanceListener = db.collection('attendanceSessions')
-        .doc(sessionId)
-        .collection('attendance')
-        .onSnapshot(
-          (snapshot) => {
-            console.log('📡 Received attendance update from Firebase');
-            
-            snapshot.docChanges().forEach((change) => {
-              const data = change.doc.data();
-              const studentId = change.doc.id;
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const userLat = position.coords.latitude;
+              const userLng = position.coords.longitude;
+              const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
               
-              if (change.type === 'added' || change.type === 'modified') {
-                if (!attendance[studentId]) {
-                  attendance[studentId] = true;
-                  
-                  if (data.markedAt && data.markedAt.seconds) {
-                    attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
-                  } else {
-                    attendanceTime[studentId] = data.time || new Date().toLocaleTimeString();
-                  }
-                  
-                  console.log(`✅ ${data.name || studentId} marked present`);
-                  showNotification(`${data.name || studentId} marked present`, 'success');
-                }
+              console.log(`📍 User location: ${userLat}, ${userLng}`);
+              console.log(`🏫 University location: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
+              console.log(`📏 Distance from university: ${distance.toFixed(2)} meters`);
+              
+              if (distance <= ALLOWED_RADIUS_METERS) {
+                updateLocationStatus(`✅ You are inside university campus (${distance.toFixed(0)}m from center)`, 'allowed');
+                resolve(true);
+              } else {
+                updateLocationStatus(`❌ You are outside university campus (${distance.toFixed(0)}m away). You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`, 'denied');
+                resolve(false);
               }
-              
-              if (change.type === 'removed') {
-                delete attendance[studentId];
-                delete attendanceTime[studentId];
+            },
+            (error) => {
+              console.error('❌ Geolocation error:', error);
+              let errorMessage = '';
+              switch (error.code) {
+                case error.PERMISSION_DENIED:
+                  errorMessage = '❌ Location access denied. Please allow location access to mark attendance.';
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  errorMessage = '❌ Location information unavailable. Please try again.';
+                  break;
+                case error.TIMEOUT:
+                  errorMessage = '❌ Location request timed out. Please try again.';
+                  break;
+                default:
+                  errorMessage = '❌ Unable to get your location. Please try again.';
+                  break;
+              }
+              updateLocationStatus(errorMessage, 'denied');
+              resolve(false);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 60000
+            }
+          );
+        });
+      }
+
+      // Sorting functions (unchanged)
+      function compareValues(key, ascending = true) {
+        return function(a, b) {
+          let varA = (a[key] || '').toString().toUpperCase();
+          let varB = (b[key] || '').toString().toUpperCase();
+          
+          if (varA < varB) {
+            return ascending ? -1 : 1;
+          }
+          if (varA > varB) {
+            return ascending ? 1 : -1;
+          }
+          return 0;
+        };
+      }
+
+      function customStatusSort(a, b) {
+        const aPresent = !!attendance[a.id];
+        const bPresent = !!attendance[b.id];
+        
+        if (statusSortMode === 'presentFirst') {
+          if (aPresent && !bPresent) return -1;
+          if (!aPresent && bPresent) return 1;
+        } else if (statusSortMode === 'absentFirst') {
+          if (!aPresent && bPresent) return -1;
+          if (aPresent && !bPresent) return 1;
+        }
+        
+        return compareValues('name', true)(a, b);
+      }
+
+      function sortData(data) {
+        if (!sortColumn) return data;
+        
+        if (sortColumn === 'status') {
+          return data.sort(customStatusSort);
+        } else if (sortColumn === 'time') {
+          return data.sort((a, b) => {
+            const aTime = attendanceTime[a.id] || '';
+            const bTime = attendanceTime[b.id] || '';
+            
+            if (aTime === '' && bTime !== '') return sortAsc ? 1 : -1;
+            if (bTime === '' && aTime !== '') return sortAsc ? -1 : 1;
+            if (aTime === '' && bTime === '') return 0;
+            
+            return sortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
+          });
+        }
+        
+        return data.sort(compareValues(sortColumn, sortAsc));
+      }
+
+      // Setup sortable column headers
+      function setupSorting() {
+        const headers = {
+          'studentIdHeader': 'id',
+          'nameHeader': 'name',
+          'fatherHeader': 'father',
+          'statusHeader': 'status',
+          'timeHeader': 'time'
+        };
+
+        Object.keys(headers).forEach(headerId => {
+          const header = document.getElementById(headerId);
+          const columnKey = headers[headerId];
+          
+          if (!header) return;
+          
+          header.dataset.originalText = header.textContent;
+          
+          header.addEventListener('click', function() {
+            Object.keys(headers).forEach(id => {
+              const h = document.getElementById(id);
+              if (h) {
+                h.classList.remove('sorted');
+                h.textContent = h.dataset.originalText;
               }
             });
 
+            if (columnKey === 'status') {
+              if (sortColumn !== 'status') {
+                sortColumn = 'status';
+                statusSortMode = 'presentFirst';
+                header.textContent = 'Status (Present First)';
+              } else if (statusSortMode === 'presentFirst') {
+                statusSortMode = 'absentFirst';
+                header.textContent = 'Status (Absent First)';
+              } else {
+                sortColumn = null;
+                statusSortMode = null;
+                header.textContent = header.dataset.originalText;
+              }
+            } else {
+              if (sortColumn === columnKey) {
+                sortAsc = !sortAsc;
+              } else {
+                sortColumn = columnKey;
+                sortAsc = false;
+                if (columnKey !== 'name') {
+                  sortAsc = true;
+                }
+              }
+              statusSortMode = null;
+              
+              const indicator = sortAsc ? ' ▲' : ' ▼';
+              header.textContent = header.dataset.originalText + indicator;
+            }
+
+            if (sortColumn) {
+              header.classList.add('sorted');
+            }
+
             renderTable();
-          },
-          (error) => {
-            console.error('❌ Error listening to attendance updates:', error);
-            showNotification('Connection issues. Working in offline mode.', 'error');
-          }
-        );
-    }
-
-    function stopListeningToAttendance() {
-      if (attendanceListener) {
-        attendanceListener();
-        attendanceListener = null;
+          });
+        });
       }
-    }
 
-    // Browser navigation handling
-    window.addEventListener('popstate', function(event) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionParam = urlParams.get('session');
-      
-      if (sessionParam) {
-        sessionId = sessionParam;
-        showStudentCheckin(sessionParam);
-      } else {
+      // Enhanced applyFilters function
+      function applyFilters() {
+        if (typeof students === 'undefined' || !Array.isArray(students)) {
+          return [];
+        }
+
+        let filtered = students.slice();
+        const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
+
+        if (searchTerm !== '') {
+          filtered = filtered.filter(student => {
+            return student.name.toLowerCase().includes(searchTerm) || 
+                  student.father.toLowerCase().includes(searchTerm) ||
+                  student.id.toLowerCase().includes(searchTerm);
+          });
+          
+          return filtered;
+        }
+
+        return sortData(filtered);
+      }
+
+      // Function to find existing session
+      async function findExistingSession(date, subjectCode) {
+        if (!firebaseInitialized) {
+          console.log('🔍 Firebase not available, checking local storage for existing sessions');
+          
+          const localSessionKey = `session_${date}_${subjectCode}`;
+          const localSession = localStorage.getItem(localSessionKey);
+          if (localSession) {
+            console.log('📂 Found existing session in local storage');
+            return JSON.parse(localSession);
+          }
+          return null;
+        }
+
+        try {
+          console.log('🔍 Searching for existing session:', { date, subjectCode });
+          
+          const sessionsRef = db.collection('attendanceSessions');
+          const querySnapshot = await sessionsRef
+            .where('date', '==', date)
+            .where('subjectCode', '==', subjectCode)
+            .where('status', '==', 'active')
+            .limit(1)
+            .get();
+
+          if (!querySnapshot.empty) {
+            const doc = querySnapshot.docs[0];
+            console.log('🎯 Found existing session:', doc.id);
+            return { id: doc.id, ...doc.data() };
+          }
+
+          console.log('❌ No existing session found');
+          return null;
+        } catch (error) {
+          console.error('❌ Error searching for existing session:', error);
+          return null;
+        }
+      }
+
+      // Function to load existing attendance data
+      async function loadExistingAttendance(sessionId) {
+        attendance = {};
+        attendanceTime = {};
+
+        if (firebaseInitialized) {
+          try {
+            const attendanceRef = db.collection('attendanceSessions')
+              .doc(sessionId)
+              .collection('attendance');
+            
+            const snapshot = await attendanceRef.get();
+            
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              const studentId = doc.id;
+              
+              attendance[studentId] = true;
+              if (data.markedAt && data.markedAt.seconds) {
+                attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
+              } else {
+                attendanceTime[studentId] = data.time || '-';
+              }
+            });
+
+            console.log(`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
+          } catch (error) {
+            console.error('❌ Error loading attendance from Firebase:', error);
+          }
+        }
+
+        const localAttendanceKey = 'attendance_' + sessionId;
+        const localAttendance = JSON.parse(localStorage.getItem(localAttendanceKey) || '{}');
+        
+        Object.keys(localAttendance).forEach(studentId => {
+          if (!attendance[studentId]) {
+            attendance[studentId] = true;
+            attendanceTime[studentId] = localAttendance[studentId].time || '-';
+          }
+        });
+
+        console.log(`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
+      }
+
+      // Firebase Functions
+      function updateFirebaseStatus(message, status) {
+        const statusEl = document.getElementById('firebaseStatus');
+        if (statusEl) {
+          statusEl.textContent = message;
+          statusEl.className = `firebase-status ${status}`;
+        }
+      }
+
+      async function createAttendanceSession(sessionData) {
+        const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
+        localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
+        localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionData));
+
+        if (!firebaseInitialized) {
+          console.log('📂 Session saved to local storage only');
+          return;
+        }
+
+        try {
+          await db.collection('attendanceSessions').doc(sessionData.sessionId).set({
+            ...sessionData,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'active',
+            totalStudents: students.length,
+            presentCount: 0
+          });
+          console.log('✅ Attendance session created in Firebase');
+        } catch (error) {
+          console.error('❌ Error creating attendance session in Firebase:', error);
+        }
+      }
+
+      async function markStudentPresent(studentId, studentData) {
+        const attendanceKey = 'attendance_' + sessionId;
+        let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+        sessionAttendance[studentId] = studentData;
+        localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
+
+        if (!firebaseInitialized || !studentId || !sessionId) {
+          console.log('📂 Attendance saved to local storage only');
+          return false;
+        }
+
+        try {
+          await db.collection('attendanceSessions')
+            .doc(sessionId)
+            .collection('attendance')
+            .doc(studentId.toString())
+            .set({
+              ...studentData,
+              markedAt: firebase.firestore.FieldValue.serverTimestamp(),
+              timestamp: Date.now()
+            });
+
+          await db.collection('attendanceSessions').doc(sessionId).update({
+            presentCount: firebase.firestore.FieldValue.increment(1),
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+          });
+
+          console.log('✅ Student attendance saved to Firebase');
+          return true;
+        } catch (error) {
+          console.error('❌ Error saving attendance to Firebase:', error);
+          return false;
+        }
+      }
+
+      function listenToAttendanceUpdates() {
+        if (!firebaseInitialized || !sessionId) return;
+
+        console.log('🔄 Starting to listen for attendance updates...');
+
+        if (attendanceListener) {
+          attendanceListener();
+          attendanceListener = null;
+        }
+
+        attendanceListener = db.collection('attendanceSessions')
+          .doc(sessionId)
+          .collection('attendance')
+          .onSnapshot(
+            (snapshot) => {
+              console.log('📡 Received attendance update from Firebase');
+              
+              snapshot.docChanges().forEach((change) => {
+                const data = change.doc.data();
+                const studentId = change.doc.id;
+                
+                if (change.type === 'added' || change.type === 'modified') {
+                  if (!attendance[studentId]) {
+                    attendance[studentId] = true;
+                    
+                    if (data.markedAt && data.markedAt.seconds) {
+                      attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
+                    } else {
+                      attendanceTime[studentId] = data.time || new Date().toLocaleTimeString();
+                    }
+                    
+                    console.log(`✅ ${data.name || studentId} marked present`);
+                    showNotification(`${data.name || studentId} marked present`, 'success');
+                  }
+                }
+                
+                if (change.type === 'removed') {
+                  delete attendance[studentId];
+                  delete attendanceTime[studentId];
+                }
+              });
+
+              renderTable();
+            },
+            (error) => {
+              console.error('❌ Error listening to attendance updates:', error);
+              showNotification('Connection issues. Working in offline mode.', 'error');
+            }
+          );
+      }
+
+      function stopListeningToAttendance() {
+        if (attendanceListener) {
+          attendanceListener();
+          attendanceListener = null;
+        }
+      }
+
+      // Browser navigation handling
+      window.addEventListener('popstate', function(event) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionParam = urlParams.get('session');
+        
+        if (sessionParam) {
+          sessionId = sessionParam;
+          showStudentCheckin(sessionParam);
+        } else {
+          if (checkAuthStatus()) {
+            showDashboard();
+          } else {
+            showLoginScreen();
+          }
+        }
+      });
+
+      function showTeacherDashboard() {
+        document.getElementById('teacherDashboard').style.display = 'block';
+        document.getElementById('studentCheckin').style.display = 'none';
+      }
+
+      // Utility Functions
+      function showNotification(message, type = 'success') {
+        const notification = document.getElementById('notification');
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.classList.add('show');
+        
+        setTimeout(() => {
+          notification.classList.remove('show');
+        }, 3000);
+      }
+
+      function checkStudentsLoaded() {
+        const loadingMsg = document.getElementById('loadingMessage');
+        
+        if (typeof students !== 'undefined' && Array.isArray(students) && students.length > 0) {
+          loadingMsg.style.display = 'none';
+          console.log(`✅ Students loaded successfully: ${students.length} students found`);
+          return true;
+        } else {
+          loadingMsg.innerHTML = '❌ Error: students.js file not found or empty. Please check the file path and content.';
+          loadingMsg.style.background = '#f8d7da';
+          loadingMsg.style.color = '#721c24';
+          console.error('❌ Students data not loaded');
+          return false;
+        }
+      }
+
+      // UPDATED: Enhanced validateForm with secret code
+      function validateForm() {
+        const date = document.getElementById('attendanceDate').value;
+        const subjectCode = document.getElementById('subjectCode').value;
+        const secretCode = document.getElementById('secretCode').value.trim();
+        const studentsLoaded = checkStudentsLoaded();
+        
+        const startBtn = document.getElementById('startBtn');
+        const isValid = date && subjectCode && secretCode && studentsLoaded;
+        
+        startBtn.disabled = !isValid;
+        return isValid;
+      }
+
+      function generateSessionId() {
+        return 'ATT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      }
+
+      function findTeacherAndTime(date, subjectCode) {
+        const selectedDate = new Date(date);
+        const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+        
+        const daySchedule = timetable[dayName];
+        if (daySchedule) {
+          for (const timeSlot in daySchedule) {
+            if (daySchedule[timeSlot][subjectCode]) {
+              return {
+                timeSlot: timeSlot,
+                teacher: daySchedule[timeSlot][subjectCode]
+              };
+            }
+          }
+        }
+        
+        return {
+          timeSlot: 'Not Scheduled',
+          teacher: 'To Be Assigned'
+        };
+      }
+
+      // UPDATED: Enhanced startAttendance with secret code
+      async function startAttendance() {
+        if (!validateForm()) {
+          alert('Please ensure all fields are filled including the secret code');
+          return;
+        }
+
+        const date = document.getElementById('attendanceDate').value;
+        const subjectCode = document.getElementById('subjectCode').value;
+        const secretCode = document.getElementById('secretCode').value.trim().toUpperCase();
+        
+        const selectedDate = new Date(date);
+        const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+        const formattedDate = selectedDate.toLocaleDateString('en-GB');
+        
+        const existingSession = await findExistingSession(formattedDate, subjectCode);
+        
+        let isNewSession = false;
+        
+        if (existingSession && existingSession.id) {
+          sessionId = existingSession.id;
+          currentSession = existingSession;
+          sessionSecretCode = existingSession.secretCode || secretCode;
+          console.log('🔄 Continuing existing session:', sessionId);
+          showNotification('📚 Continuing existing attendance session', 'success');
+          
+          await loadExistingAttendance(sessionId);
+        } else {
+          isNewSession = true;
+          const classDetails = findTeacherAndTime(date, subjectCode);
+          sessionId = generateSessionId();
+          sessionSecretCode = secretCode;
+
+          currentSession = {
+            sessionId: sessionId,
+            date: formattedDate,
+            day: dayName,
+            timeSlot: classDetails.timeSlot,
+            subjectCode: subjectCode,
+            subjectName: subjectNames[subjectCode],
+            teacherName: classDetails.teacher,
+            secretCode: sessionSecretCode // UPDATED: Store secret code
+          };
+
+          await createAttendanceSession(currentSession);
+          console.log('🆕 Created new session:', sessionId);
+          showNotification('✅ New attendance session started', 'success');
+          
+          attendance = {};
+          attendanceTime = {};
+        }
+
+        checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+
+        // UPDATED: Display session info with secret code
+        document.getElementById('classInfo').innerHTML = `
+          <h3>${isNewSession ? 'New' : 'Continuing'} Attendance Session</h3>
+          <div class="class-details">
+            <div><strong>Date:</strong> ${currentSession.date} (${currentSession.day})</div>
+            <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
+            <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
+            <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
+            ${!isNewSession ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
+          </div>
+          <div class="secret-code-info">
+            <strong>🔑 Secret Code:</strong>
+            <div class="secret-code-display">${sessionSecretCode}</div>
+          </div>
+        `;
+
+        document.getElementById('sessionUrl').textContent = checkinUrl;
+
+        document.getElementById('setupSection').style.display = 'none';
+        document.getElementById('attendanceSection').style.display = 'block';
+
+        renderTable();
+        listenToAttendanceUpdates();
+      }
+
+      // Share Functions
+      function copyLink() {
+        navigator.clipboard.writeText(checkinUrl).then(() => {
+          showNotification('✅ Link copied to clipboard!');
+        }).catch(() => {
+          const textArea = document.createElement('textarea');
+          textArea.value = checkinUrl;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          showNotification('✅ Link copied to clipboard!');
+        });
+      }
+
+      function shareWhatsApp() {
+        const message = `*"GNDU Attendance System"*\n\n${currentSession.subjectName}\nDate: ${currentSession.date}\nTime: ${currentSession.timeSlot}\nTeacher: ${currentSession.teacherName}\n\n*"Important Requirements:"*\n1. You must be inside the university campus\n2. You must enter the secret code correctly told in classroom\n\nClick this link to mark your attendance:\n${checkinUrl}`;
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(whatsappUrl, '_blank');
+      }
+
+      // Only update stats when no search filter is active
+      function updateStats() {
+        const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
+        
+        if (searchTerm !== '') {
+          return;
+        }
+
+        const allStudents = students || [];
+        const presentStudents = allStudents.filter(student => attendance[student.id]).length;
+        const totalStudents = allStudents.length;
+        const absentStudents = totalStudents - presentStudents;
+        const attendancePercent = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
+
+        document.getElementById('totalStudents').textContent = totalStudents;
+        document.getElementById('presentCount').textContent = presentStudents;
+        document.getElementById('absentCount').textContent = absentStudents;
+        document.getElementById('attendancePercent').textContent = attendancePercent + '%';
+      }
+
+      // Enhanced renderTable function
+      function renderTable() {
+        const tbody = document.getElementById("studentTable");
+        const filteredStudents = applyFilters();
+
+        tbody.innerHTML = "";
+        filteredStudents.forEach((student, index) => {
+          const row = document.createElement("tr");
+          if (attendance[student.id]) row.classList.add("present");
+          
+          row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${student.id}</td>
+            <td>${student.name}</td>
+            <td>${student.father}</td>
+            <td>
+              ${attendance[student.id] ? 
+                '<span class="status-present">Present</span>' : 
+                '<span class="status-absent">Absent</span>'
+              }
+            </td>
+            <td>${attendanceTime[student.id] || '-'}</td>
+          `;
+          tbody.appendChild(row);
+        });
+
+        updateStats();
+      }
+
+      // Student Check-in Functions
+      function showStudentCheckin(sessionParam) {
+        let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
+        
+        if (!session && firebaseInitialized) {
+          db.collection('attendanceSessions').doc(sessionParam).get()
+            .then((doc) => {
+              if (doc.exists) {
+                session = doc.data();
+                localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
+                displayStudentCheckin(session);
+              } else {
+                alert('Session not found or has expired');
+              }
+            })
+            .catch((error) => {
+              console.error('Error fetching session:', error);
+              alert('Unable to load session. Please try again.');
+            });
+          return;
+        }
+        
+        if (!session) {
+          alert('Invalid or expired session ID');
+          return;
+        }
+
+        displayStudentCheckin(session);
+      }
+
+      async function displayStudentCheckin(session) {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('teacherDashboard').style.display = 'none';
+        document.getElementById('studentCheckin').style.display = 'block';
+        
+        document.getElementById('checkinClassInfo').innerHTML = 
+          `${session.subjectName}<br>${session.date} (${session.timeSlot})`;
+
+        // Store secret code for validation
+        sessionSecretCode = session.secretCode || '';
+
+        // Check location when student check-in page loads
+        const locationAllowed = await checkUserLocation();
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = !locationAllowed;
+        
+        if (locationAllowed) {
+          submitBtn.textContent = 'Mark Me Present';
+        } else {
+          submitBtn.textContent = 'Location Required';
+        }
+      }
+
+      // UPDATED: submitAttendance function with secret code verification
+      async function submitAttendance() {
+        const urlSessionId = new URLSearchParams(window.location.search).get('session');
+        const studentId = document.getElementById('studentId').value.trim();
+        const studentName = document.getElementById('studentName').value.trim();
+        const secretCodeInput = document.getElementById('secretCodeInput').value.trim().toUpperCase();
+        const messageDiv = document.getElementById('checkinMessage');
+        const submitBtn = document.getElementById('submitBtn');
+
+        console.log('📝 Submitting attendance:', { urlSessionId, studentId, studentName });
+
+        if (!urlSessionId) {
+          messageDiv.innerHTML = '<div class="error-message">Invalid session. Please use a valid attendance link.</div>';
+          return;
+        }
+
+        if (!studentId || !studentName || !secretCodeInput) {
+          messageDiv.innerHTML = '<div class="error-message">Please fill in all fields including the secret code</div>';
+          return;
+        }
+
+        // UPDATED: Secret code validation (exact match, case-insensitive)
+        const session = JSON.parse(localStorage.getItem('attendanceSession_' + urlSessionId));
+        if (!session || !session.secretCode) {
+          messageDiv.innerHTML = '<div class="error-message">Session configuration error. Please contact your teacher.</div>';
+          return;
+        }
+
+        if (secretCodeInput !== session.secretCode.toUpperCase()) {
+          messageDiv.innerHTML = '<div class="error-message">❌ Incorrect secret code. Please check with your teacher and try again.</div>';
+          return;
+        }
+
+        // Verify location before allowing submission
+        updateLocationStatus('📍 Verifying your location...', 'checking');
+        const locationAllowed = await checkUserLocation();
+        
+        if (!locationAllowed) {
+          messageDiv.innerHTML = '<div class="error-message">❌ You must be inside the university campus to mark attendance. Please move to the campus and try again.</div>';
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        try {
+          const student = students.find(s => {
+            if (!s.id || !s.name) return false;
+            return s.id.toString().toLowerCase() === studentId.toLowerCase() && 
+                  s.name.toLowerCase() === studentName.toLowerCase();
+          });
+
+          if (!student) {
+            messageDiv.innerHTML = '<div class="error-message">Student ID and Name do not match our records. Please check your spelling.</div>';
+            return;
+          }
+
+          const attendanceKey = 'attendance_' + urlSessionId;
+          let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+          
+          if (sessionAttendance[student.id]) {
+            messageDiv.innerHTML = '<div class="error-message">You have already marked your attendance for this session</div>';
+            return;
+          }
+
+          const currentTime = new Date().toLocaleTimeString();
+          const attendanceData = {
+            studentId: student.id.toString(),
+            name: student.name,
+            father: student.father,
+            time: currentTime,
+            secretCode: secretCodeInput, // UPDATED: Store secret code used
+            latitude: null,
+            longitude: null
+          };
+
+          // Get current location and store it
+          if (navigator.geolocation) {
+            try {
+              const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                  enableHighAccuracy: true,
+                  timeout: 5000
+                });
+              });
+              attendanceData.latitude = position.coords.latitude;
+              attendanceData.longitude = position.coords.longitude;
+            } catch (error) {
+              console.warn('Could not get precise location for storage:', error);
+            }
+          }
+
+          const originalSessionId = sessionId;
+          sessionId = urlSessionId;
+
+          const firebaseSaved = await markStudentPresent(student.id.toString(), attendanceData);
+
+          sessionId = originalSessionId;
+
+          messageDiv.innerHTML = `
+            <div class="success-message">
+              ✅ Attendance marked successfully!<br>
+              Student: ${student.name}<br>
+              Time: ${currentTime}<br>
+              📍 Location verified<br>
+              🔑 Secret code accepted
+              ${firebaseSaved ? '<br>📡 Synced with server' : '<br>💾 Saved locally'}
+            </div>
+          `;
+
+          document.getElementById('studentId').value = '';
+          document.getElementById('studentName').value = '';
+          document.getElementById('secretCodeInput').value = '';
+
+          if (currentSession && currentSession.sessionId === urlSessionId) {
+            attendance[student.id] = true;
+            attendanceTime[student.id] = currentTime;
+            renderTable();
+          }
+
+          // Disable form after successful submission
+          document.getElementById('studentId').disabled = true;
+          document.getElementById('studentName').disabled = true;
+          document.getElementById('secretCodeInput').disabled = true;
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Attendance Marked ✓';
+
+        } catch (error) {
+          console.error('Error submitting attendance:', error);
+          messageDiv.innerHTML = '<div class="error-message">Error submitting attendance. Please try again.</div>';
+        } finally {
+          if (!messageDiv.innerHTML.includes('success-message')) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Mark Me Present';
+          }
+        }
+      }
+
+      // Event Listeners
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 GNDU Attendance System starting...');
+
+        // Check authentication status on page load
         if (checkAuthStatus()) {
           showDashboard();
         } else {
           showLoginScreen();
         }
-      }
-    });
 
-    function showTeacherDashboard() {
-      document.getElementById('teacherDashboard').style.display = 'block';
-      document.getElementById('studentCheckin').style.display = 'none';
-    }
-
-    // Utility Functions
-    function showNotification(message, type = 'success') {
-      const notification = document.getElementById('notification');
-      notification.textContent = message;
-      notification.className = `notification ${type}`;
-      notification.classList.add('show');
-      
-      setTimeout(() => {
-        notification.classList.remove('show');
-      }, 3000);
-    }
-
-    function checkStudentsLoaded() {
-      const loadingMsg = document.getElementById('loadingMessage');
-      
-      if (typeof students !== 'undefined' && Array.isArray(students) && students.length > 0) {
-        loadingMsg.style.display = 'none';
-        console.log(`✅ Students loaded successfully: ${students.length} students found`);
-        return true;
-      } else {
-        loadingMsg.innerHTML = '❌ Error: students.js file not found or empty. Please check the file path and content.';
-        loadingMsg.style.background = '#f8d7da';
-        loadingMsg.style.color = '#721c24';
-        console.error('❌ Students data not loaded');
-        return false;
-      }
-    }
-
-    // UPDATED: Enhanced validateForm with secret code
-    function validateForm() {
-      const date = document.getElementById('attendanceDate').value;
-      const subjectCode = document.getElementById('subjectCode').value;
-      const secretCode = document.getElementById('secretCode').value.trim();
-      const studentsLoaded = checkStudentsLoaded();
-      
-      const startBtn = document.getElementById('startBtn');
-      const isValid = date && subjectCode && secretCode && studentsLoaded;
-      
-      startBtn.disabled = !isValid;
-      return isValid;
-    }
-
-    function generateSessionId() {
-      return 'ATT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    function findTeacherAndTime(date, subjectCode) {
-      const selectedDate = new Date(date);
-      const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
-      
-      const daySchedule = timetable[dayName];
-      if (daySchedule) {
-        for (const timeSlot in daySchedule) {
-          if (daySchedule[timeSlot][subjectCode]) {
-            return {
-              timeSlot: timeSlot,
-              teacher: daySchedule[timeSlot][subjectCode]
-            };
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('attendanceDate').value = today;
+        
+        document.getElementById('attendanceDate').addEventListener('change', validateForm);
+        document.getElementById('subjectCode').addEventListener('change', validateForm);
+        document.getElementById('secretCode').addEventListener('input', validateForm); // UPDATED
+        document.getElementById('startBtn').addEventListener('click', startAttendance);
+        
+        // Login form enter key handling
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            handleLogin();
           }
-        }
-      }
-      
-      return {
-        timeSlot: 'Not Scheduled',
-        teacher: 'To Be Assigned'
-      };
-    }
-
-    // UPDATED: Enhanced startAttendance with secret code
-    async function startAttendance() {
-      if (!validateForm()) {
-        alert('Please ensure all fields are filled including the secret code');
-        return;
-      }
-
-      const date = document.getElementById('attendanceDate').value;
-      const subjectCode = document.getElementById('subjectCode').value;
-      const secretCode = document.getElementById('secretCode').value.trim().toUpperCase();
-      
-      const selectedDate = new Date(date);
-      const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
-      const formattedDate = selectedDate.toLocaleDateString('en-GB');
-      
-      const existingSession = await findExistingSession(formattedDate, subjectCode);
-      
-      let isNewSession = false;
-      
-      if (existingSession && existingSession.id) {
-        sessionId = existingSession.id;
-        currentSession = existingSession;
-        sessionSecretCode = existingSession.secretCode || secretCode;
-        console.log('🔄 Continuing existing session:', sessionId);
-        showNotification('📚 Continuing existing attendance session', 'success');
-        
-        await loadExistingAttendance(sessionId);
-      } else {
-        isNewSession = true;
-        const classDetails = findTeacherAndTime(date, subjectCode);
-        sessionId = generateSessionId();
-        sessionSecretCode = secretCode;
-
-        currentSession = {
-          sessionId: sessionId,
-          date: formattedDate,
-          day: dayName,
-          timeSlot: classDetails.timeSlot,
-          subjectCode: subjectCode,
-          subjectName: subjectNames[subjectCode],
-          teacherName: classDetails.teacher,
-          secretCode: sessionSecretCode // UPDATED: Store secret code
-        };
-
-        await createAttendanceSession(currentSession);
-        console.log('🆕 Created new session:', sessionId);
-        showNotification('✅ New attendance session started', 'success');
-        
-        attendance = {};
-        attendanceTime = {};
-      }
-
-      checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
-
-      // UPDATED: Display session info with secret code
-      document.getElementById('classInfo').innerHTML = `
-        <h3>${isNewSession ? 'New' : 'Continuing'} Attendance Session</h3>
-        <div class="class-details">
-          <div><strong>Date:</strong> ${currentSession.date} (${currentSession.day})</div>
-          <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
-          <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
-          <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
-          ${!isNewSession ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
-        </div>
-        <div class="secret-code-info">
-          <strong>🔑 Secret Code:</strong>
-          <div class="secret-code-display">${sessionSecretCode}</div>
-        </div>
-      `;
-
-      document.getElementById('sessionUrl').textContent = checkinUrl;
-
-      document.getElementById('setupSection').style.display = 'none';
-      document.getElementById('attendanceSection').style.display = 'block';
-
-      renderTable();
-      listenToAttendanceUpdates();
-    }
-
-    // Share Functions
-    function copyLink() {
-      navigator.clipboard.writeText(checkinUrl).then(() => {
-        showNotification('✅ Link copied to clipboard!');
-      }).catch(() => {
-        const textArea = document.createElement('textarea');
-        textArea.value = checkinUrl;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        showNotification('✅ Link copied to clipboard!');
-      });
-    }
-
-    function shareWhatsApp() {
-      const message = `*"GNDU Attendance System"*\n\n${currentSession.subjectName}\nDate: ${currentSession.date}\nTime: ${currentSession.timeSlot}\nTeacher: ${currentSession.teacherName}\n\n*"Important Requirements:"*\n1. You must be inside the university campus\n2. You must enter the secret code correctly told in classroom\n\nClick this link to mark your attendance:\n${checkinUrl}`;
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-      window.open(whatsappUrl, '_blank');
-    }
-
-    // Only update stats when no search filter is active
-    function updateStats() {
-      const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
-      
-      if (searchTerm !== '') {
-        return;
-      }
-
-      const allStudents = students || [];
-      const presentStudents = allStudents.filter(student => attendance[student.id]).length;
-      const totalStudents = allStudents.length;
-      const absentStudents = totalStudents - presentStudents;
-      const attendancePercent = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
-
-      document.getElementById('totalStudents').textContent = totalStudents;
-      document.getElementById('presentCount').textContent = presentStudents;
-      document.getElementById('absentCount').textContent = absentStudents;
-      document.getElementById('attendancePercent').textContent = attendancePercent + '%';
-    }
-
-    // Enhanced renderTable function
-    function renderTable() {
-      const tbody = document.getElementById("studentTable");
-      const filteredStudents = applyFilters();
-
-      tbody.innerHTML = "";
-      filteredStudents.forEach((student, index) => {
-        const row = document.createElement("tr");
-        if (attendance[student.id]) row.classList.add("present");
-        
-        row.innerHTML = `
-          <td>${index + 1}</td>
-          <td>${student.id}</td>
-          <td>${student.name}</td>
-          <td>${student.father}</td>
-          <td>
-            ${attendance[student.id] ? 
-              '<span class="status-present">Present</span>' : 
-              '<span class="status-absent">Absent</span>'
-            }
-          </td>
-          <td>${attendanceTime[student.id] || '-'}</td>
-        `;
-        tbody.appendChild(row);
-      });
-
-      updateStats();
-    }
-
-    // Student Check-in Functions
-    function showStudentCheckin(sessionParam) {
-      let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
-      
-      if (!session && firebaseInitialized) {
-        db.collection('attendanceSessions').doc(sessionParam).get()
-          .then((doc) => {
-            if (doc.exists) {
-              session = doc.data();
-              localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
-              displayStudentCheckin(session);
-            } else {
-              alert('Session not found or has expired');
-            }
-          })
-          .catch((error) => {
-            console.error('Error fetching session:', error);
-            alert('Unable to load session. Please try again.');
-          });
-        return;
-      }
-      
-      if (!session) {
-        alert('Invalid or expired session ID');
-        return;
-      }
-
-      displayStudentCheckin(session);
-    }
-
-    async function displayStudentCheckin(session) {
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      
-      document.getElementById('checkinClassInfo').innerHTML = 
-        `${session.subjectName}<br>${session.date} (${session.timeSlot})`;
-
-      // Store secret code for validation
-      sessionSecretCode = session.secretCode || '';
-
-      // Check location when student check-in page loads
-      const locationAllowed = await checkUserLocation();
-      const submitBtn = document.getElementById('submitBtn');
-      submitBtn.disabled = !locationAllowed;
-      
-      if (locationAllowed) {
-        submitBtn.textContent = 'Mark Me Present';
-      } else {
-        submitBtn.textContent = 'Location Required';
-      }
-    }
-
-    // UPDATED: submitAttendance function with secret code verification
-    async function submitAttendance() {
-      const urlSessionId = new URLSearchParams(window.location.search).get('session');
-      const studentId = document.getElementById('studentId').value.trim();
-      const studentName = document.getElementById('studentName').value.trim();
-      const secretCodeInput = document.getElementById('secretCodeInput').value.trim().toUpperCase();
-      const messageDiv = document.getElementById('checkinMessage');
-      const submitBtn = document.getElementById('submitBtn');
-
-      console.log('📝 Submitting attendance:', { urlSessionId, studentId, studentName });
-
-      if (!urlSessionId) {
-        messageDiv.innerHTML = '<div class="error-message">Invalid session. Please use a valid attendance link.</div>';
-        return;
-      }
-
-      if (!studentId || !studentName || !secretCodeInput) {
-        messageDiv.innerHTML = '<div class="error-message">Please fill in all fields including the secret code</div>';
-        return;
-      }
-
-      // UPDATED: Secret code validation (exact match, case-insensitive)
-      const session = JSON.parse(localStorage.getItem('attendanceSession_' + urlSessionId));
-      if (!session || !session.secretCode) {
-        messageDiv.innerHTML = '<div class="error-message">Session configuration error. Please contact your teacher.</div>';
-        return;
-      }
-
-      if (secretCodeInput !== session.secretCode.toUpperCase()) {
-        messageDiv.innerHTML = '<div class="error-message">❌ Incorrect secret code. Please check with your teacher and try again.</div>';
-        return;
-      }
-
-      // Verify location before allowing submission
-      updateLocationStatus('📍 Verifying your location...', 'checking');
-      const locationAllowed = await checkUserLocation();
-      
-      if (!locationAllowed) {
-        messageDiv.innerHTML = '<div class="error-message">❌ You must be inside the university campus to mark attendance. Please move to the campus and try again.</div>';
-        return;
-      }
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Submitting...';
-
-      try {
-        const student = students.find(s => {
-          if (!s.id || !s.name) return false;
-          return s.id.toString().toLowerCase() === studentId.toLowerCase() && 
-                 s.name.toLowerCase() === studentName.toLowerCase();
         });
 
-        if (!student) {
-          messageDiv.innerHTML = '<div class="error-message">Student ID and Name do not match our records. Please check your spelling.</div>';
-          return;
+        if (document.getElementById('search')) {
+          document.getElementById('search').addEventListener('keyup', renderTable);
         }
 
-        const attendanceKey = 'attendance_' + urlSessionId;
-        let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+        setupSorting();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionParam = urlParams.get('session');
         
-        if (sessionAttendance[student.id]) {
-          messageDiv.innerHTML = '<div class="error-message">You have already marked your attendance for this session</div>';
-          return;
+        if (sessionParam) {
+          showStudentCheckin(sessionParam);
+        } else {
+          setTimeout(() => {
+            if (checkAuthStatus()) {
+              validateForm();
+            }
+          }, 100);
         }
 
-        const currentTime = new Date().toLocaleTimeString();
-        const attendanceData = {
-          studentId: student.id.toString(),
-          name: student.name,
-          father: student.father,
-          time: currentTime,
-          secretCode: secretCodeInput, // UPDATED: Store secret code used
-          latitude: null,
-          longitude: null
-        };
-
-        // Get current location and store it
-        if (navigator.geolocation) {
-          try {
-            const position = await new Promise((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, {
-                enableHighAccuracy: true,
-                timeout: 5000
-              });
-            });
-            attendanceData.latitude = position.coords.latitude;
-            attendanceData.longitude = position.coords.longitude;
-          } catch (error) {
-            console.warn('Could not get precise location for storage:', error);
-          }
-        }
-
-        const originalSessionId = sessionId;
-        sessionId = urlSessionId;
-
-        const firebaseSaved = await markStudentPresent(student.id.toString(), attendanceData);
-
-        sessionId = originalSessionId;
-
-        messageDiv.innerHTML = `
-          <div class="success-message">
-            ✅ Attendance marked successfully!<br>
-            Student: ${student.name}<br>
-            Time: ${currentTime}<br>
-            📍 Location verified<br>
-            🔑 Secret code accepted
-            ${firebaseSaved ? '<br>📡 Synced with server' : '<br>💾 Saved locally'}
-          </div>
-        `;
-
-        document.getElementById('studentId').value = '';
-        document.getElementById('studentName').value = '';
-        document.getElementById('secretCodeInput').value = '';
-
-        if (currentSession && currentSession.sessionId === urlSessionId) {
-          attendance[student.id] = true;
-          attendanceTime[student.id] = currentTime;
-          renderTable();
-        }
-
-        // Disable form after successful submission
-        document.getElementById('studentId').disabled = true;
-        document.getElementById('studentName').disabled = true;
-        document.getElementById('secretCodeInput').disabled = true;
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Attendance Marked ✓';
-
-      } catch (error) {
-        console.error('Error submitting attendance:', error);
-        messageDiv.innerHTML = '<div class="error-message">Error submitting attendance. Please try again.</div>';
-      } finally {
-        if (!messageDiv.innerHTML.includes('success-message')) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Mark Me Present';
-        }
-      }
-    }
-
-    // Event Listeners
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('🚀 GNDU Attendance System starting...');
-
-      // Check authentication status on page load
-      if (checkAuthStatus()) {
-        showDashboard();
-      } else {
-        showLoginScreen();
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      document.getElementById('attendanceDate').value = today;
-      
-      document.getElementById('attendanceDate').addEventListener('change', validateForm);
-      document.getElementById('subjectCode').addEventListener('change', validateForm);
-      document.getElementById('secretCode').addEventListener('input', validateForm); // UPDATED
-      document.getElementById('startBtn').addEventListener('click', startAttendance);
-      
-      // Login form enter key handling
-      document.getElementById('loginPassword').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-          handleLogin();
-        }
+        console.log('✅ GNDU Attendance System initialized with authorization and secret code');
       });
 
-      if (document.getElementById('search')) {
-        document.getElementById('search').addEventListener('keyup', renderTable);
-      }
+      window.addEventListener('beforeunload', function() {
+        stopListeningToAttendance();
+      });
 
-      setupSorting();
-
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionParam = urlParams.get('session');
-      
-      if (sessionParam) {
-        showStudentCheckin(sessionParam);
-      } else {
-        setTimeout(() => {
-          if (checkAuthStatus()) {
-            validateForm();
-          }
-        }, 100);
-      }
-
-      console.log('✅ GNDU Attendance System initialized with authorization and secret code');
-    });
-
-    window.addEventListener('beforeunload', function() {
-      stopListeningToAttendance();
-    });
-
-    // Make functions globally accessible
-    window.submitAttendance = submitAttendance;
-    window.copyLink = copyLink;
-    window.shareWhatsApp = shareWhatsApp;
-    window.handleLogin = handleLogin;
-    window.handleLogout = handleLogout;
-  </script>
-</body>
-</html>
+      // Make functions globally accessible
+      window.submitAttendance = submitAttendance;
+      window.copyLink = copyLink;
+      window.shareWhatsApp = shareWhatsApp;
+      window.handleLogin = handleLogin;
+      window.handleLogout = handleLogout;
+    </script>
+  </body>
+  </html>
