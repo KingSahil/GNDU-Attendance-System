@@ -1520,39 +1520,129 @@ function renderTable() {
   updateStats();
 }
 
-// Export currently visible table data to CSV (Excel-compatible)
-function exportToExcel() {
-  const filtered = applyFilters();
-  const lines = [];
-  // Header (match UI labels)
-  lines.push(['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'].join(','));
-  // Rows
-  filtered.forEach((student, idx) => {
-    const status = attendance[student.id] ? 'Present' : 'Absent';
-    const time = attendanceTime[student.id] || '-';
-    // Escape commas and quotes
-    const cells = [
-      getRollNumberById(student.id),
-      `"${String(student.id).replace(/"/g, '""')}"`,
-      `"${String(student.name || '').replace(/"/g, '""')}"`,
-      `"${String(student.father || '').replace(/"/g, '""')}"`,
-      status,
-      `"${String(time).replace(/"/g, '""')}"`
-    ];
-    lines.push(cells.join(','));
-  });
+// Export currently visible table data to native .xlsx with formatting
+async function exportToExcel() {
+  try {
+    if (!window.ExcelJS) {
+      alert('ExcelJS library not loaded. Please check your internet connection and try again.');
+      return;
+    }
 
-  const csvContent = '\uFEFF' + lines.join('\n'); // BOM for Excel UTF-8
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const dateStr = new Date().toISOString().slice(0,10);
-  a.href = url;
-  a.download = `attendance_${dateStr}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+    const filtered = applyFilters();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Attendance');
+
+    // Optional: Title and session info
+    const title = 'GNDU Attendance';
+    ws.mergeCells('A1:F1');
+    ws.getCell('A1').value = title;
+    ws.getCell('A1').font = { size: 16, bold: true };
+    ws.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Session details row (if available)
+    const infoParts = [];
+    if (currentSession?.date) infoParts.push(`Date: ${currentSession.date}`);
+    if (currentSession?.timeSlot) infoParts.push(`Time: ${currentSession.timeSlot}`);
+    if (currentSession?.subjectName) infoParts.push(`Subject: ${currentSession.subjectName}`);
+    if (currentSession?.teacherName) infoParts.push(`Teacher: ${currentSession.teacherName}`);
+    const info = infoParts.join('  •  ');
+    if (info) {
+      ws.mergeCells('A2:F2');
+      ws.getCell('A2').value = info;
+      ws.getCell('A2').font = { size: 11, color: { argb: 'FF555555' } };
+      ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
+    }
+
+    // Header row at row 4 for clear spacing
+    const headerRowIndex = 4;
+    const headers = ['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'];
+    ws.getRow(headerRowIndex).values = headers;
+
+    // Column widths approximating UI
+    ws.columns = [
+      { key: 'roll', width: 12 },
+      { key: 'id', width: 14 },
+      { key: 'name', width: 28 },
+      { key: 'father', width: 28 },
+      { key: 'status', width: 12 },
+      { key: 'time', width: 16 }
+    ];
+
+    // Style header
+    const headerRow = ws.getRow(headerRowIndex);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }; // gray-700
+    headerRow.height = 20;
+
+    // Add data rows starting at row 5
+    const startRow = headerRowIndex + 1;
+    filtered.forEach((student, i) => {
+      const rowIndex = startRow + i;
+      const isPresent = !!attendance[student.id];
+      const time = attendanceTime[student.id] || '-';
+      const row = ws.getRow(rowIndex);
+      row.values = [
+        getRollNumberById(student.id),
+        String(student.id),
+        String(student.name || ''),
+        String(student.father || ''),
+        isPresent ? 'Present' : 'Absent',
+        String(time)
+      ];
+
+      // Row styling
+      row.alignment = { vertical: 'middle' };
+      // Mimic UI: green-ish background for present rows
+      if (isPresent) {
+        row.eachCell((cell, col) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFAF0' } }; // light green tint
+        });
+      }
+      // Status cell color coding
+      const statusCell = ws.getCell(rowIndex, 5);
+      statusCell.font = { bold: true, color: { argb: isPresent ? 'FF1F7A1F' : 'FFB00020' } };
+      statusCell.alignment = { horizontal: 'center' };
+    });
+
+    // Borders for table area
+    const lastRow = startRow + filtered.length - 1;
+    for (let r = headerRowIndex; r <= lastRow; r++) {
+      for (let c = 1; c <= 6; c++) {
+        const cell = ws.getCell(r, c);
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          left: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          bottom: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          right: { style: 'thin', color: { argb: 'FFAAAAAA' } }
+        };
+      }
+    }
+
+    // Freeze header (no autofilter to avoid filter arrows)
+    ws.views = [{ state: 'frozen', ySplit: headerRowIndex }];
+
+    // Align certain columns
+    ['A', 'B', 'E', 'F'].forEach(col => {
+      ws.getColumn(col).alignment = { horizontal: 'center' };
+    });
+
+    // Generate and download
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance_${dateStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('XLSX export failed:', err);
+    alert('Failed to export Excel file. Please try again.');
+  }
 }
 
 // Print the currently visible table data
@@ -1560,14 +1650,17 @@ function printAttendance() {
   const filtered = applyFilters();
   const dateStr = new Date().toLocaleString();
   let html = '';
-  html += '<html><head><title>Attendance Print</title>';
+  html += '<!DOCTYPE html><html><head><title>Attendance Print</title>';
+  html += '<meta name="viewport" content="width=device-width, initial-scale=1">';
   html += '<style>'+
+          'html,body{background:#fff !important}'+
           'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#000}'+
           'h1{font-size:20px;margin:0 0 10px} h2{font-size:14px;margin:0 0 20px;color:#333}'+
           'table{width:100%;border-collapse:collapse}'+
           'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px}'+
           'th{background:#f0f0f0}'+
           'tr.present td{background:#eefbea}'+
+          '@page { size: auto; margin: 10mm; }'+
           '</style></head><body>';
   html += '<h1>GNDU Attendance</h1>';
   html += `<h2>Printed: ${dateStr}</h2>`;
@@ -1575,11 +1668,11 @@ function printAttendance() {
           '<th>Roll Number</th>'+
           '<th>Student ID</th>'+
           '<th>Name</th>'+
-          "<th>Father's Name</th>"+
+          "<th>Father\'s Name</th>"+
           '<th>Status</th>'+
           '<th>Check-in Time</th>'+
           '</tr></thead><tbody>';
-  filtered.forEach((student, idx) => {
+  filtered.forEach((student) => {
     const status = attendance[student.id] ? 'Present' : 'Absent';
     const time = attendanceTime[student.id] || '-';
     html += '<tr class="'+(attendance[student.id] ? 'present' : '')+'">'+
@@ -1591,16 +1684,53 @@ function printAttendance() {
             `<td>${time}</td>`+
             '</tr>';
   });
-  html += '</tbody></table></body></html>';
+  html += '</tbody></table>';
+  html += '<script>window.addEventListener("afterprint", function(){ setTimeout(function(){ window.close && window.close(); }, 0); });<\/script>';
+  html += '</body></html>';
 
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  // Give the new window a moment to render before printing
-  setTimeout(() => { w.print(); w.close(); }, 300);
+  // Android-safe print via hidden iframe
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+
+  const cleanup = () => {
+    try { document.body.removeChild(iframe); } catch (_) {}
+  };
+
+  const triggerPrint = () => {
+    try {
+      const win = iframe.contentWindow || iframe;
+      // Delay slightly to ensure layout/render is complete
+      setTimeout(() => {
+        try { win.focus(); } catch (_) {}
+        try { win.print(); } catch (_) {}
+        // Fallback cleanup if afterprint doesn't fire
+        setTimeout(cleanup, 3000);
+      }, 500);
+    } catch (_) {
+      cleanup();
+    }
+  };
+
+  iframe.onload = triggerPrint;
+  // Prefer srcdoc when available
+  if ('srcdoc' in iframe) {
+    iframe.srcdoc = html;
+    document.body.appendChild(iframe);
+  } else {
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow ? iframe.contentWindow.document : iframe.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // onload may not fire reliably after document.write; ensure print anyway
+    setTimeout(triggerPrint, 700);
+  }
 }
 
 // Print the table exactly as it appears on the page with full styling
@@ -1840,69 +1970,24 @@ async function displayStudentCheckin(session) {
   }
 }
 
+ 
 async function submitAttendance() {
-  const urlSessionId = new URLSearchParams(window.location.search).get('session');
-  const studentId = document.getElementById('studentId')?.value.trim() || '';
-  const studentName = document.getElementById('studentName')?.value.trim() || '';
-  const secretCodeInput = (document.getElementById('secretCodeInput')?.value || '').trim().toUpperCase();
-  const messageDiv = document.getElementById('checkinMessage');
-  const submitBtn = document.getElementById('submitBtn');
+  // Gather inputs and helpers
+  const urlSessionId = new URLSearchParams(window.location.search).get('session') || (currentSession && currentSession.sessionId) || sessionId || '';
+  const secretCodeInput = document.getElementById('secretCodeInput')?.value?.trim().toUpperCase();
+  const studentId = document.getElementById('studentId')?.value?.trim(); // Roll Number input
+  const studentName = document.getElementById('studentName')?.value?.trim();
   const form = document.getElementById('studentCheckinForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const messageDiv = document.getElementById('checkinMessage');
 
-  console.log('📝 Submitting attendance:', { urlSessionId, studentId, studentName });
-
-  // Reset any previous messages and errors
-  if (messageDiv) {
-    messageDiv.innerHTML = '';
-    // Remove any error highlights
-    const form = document.getElementById('studentCheckinForm');
-    if (form) {
-      form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
-      form.querySelectorAll('.error-text').forEach(el => el.remove());
-    }
+  function showError(msg) {
+    if (messageDiv) messageDiv.innerHTML = `<div class="error-message">${msg}</div>`;
   }
-  
-  // Basic validation
-  if (!urlSessionId) {
-    showError('Invalid session. Please use a valid attendance link.');
-    return;
+  function normalizeName(n) {
+    return (n || '').toString().trim().replace(/\s+/g, ' ').toUpperCase();
   }
-  
-  // Validate required fields
-  const errors = [];
-  const errorFields = [];
-  
-  if (!secretCodeInput) {
-    errors.push('Secret Code');
-    errorFields.push('secretCodeInput');
-  }
-  if (!studentId) {
-    errors.push('Roll Number');
-    errorFields.push('studentId');
-  }
-  if (!studentName) {
-    errors.push('Full Name');
-    errorFields.push('studentName');
-  }
-  
-  if (errors.length > 0) {
-    // Highlight the first error field
-    if (errorFields.length > 0) {
-      const firstErrorField = document.getElementById(errorFields[0]);
-      if (firstErrorField) {
-        firstErrorField.focus();
-        firstErrorField.classList.add('input-error');
-        // Add error message below the input
-        const errorText = document.createElement('div');
-        errorText.className = 'error-text';
-        errorText.textContent = 'This field is required';
-        firstErrorField.parentNode.insertBefore(errorText, firstErrorField.nextSibling);
-      }
-    }
-    
-    showError(`Please fill in the following required fields: ${errors.join(', ')}`);
-    return;
-  }
+  function buildRollMapsIfNeeded() { /* no-op if already built elsewhere */ }
 
   // Validate Roll Number format and range (1..N)
   const rollNum = parseInt(studentId, 10);
@@ -1971,15 +2056,6 @@ async function submitAttendance() {
     const studentList = Array.isArray(students) ? students : (Array.isArray(window.students) ? window.students : []);
     const student = studentList.find(s => s?.id?.toString() === String(mappedStudentId));
     const inputNorm = normalizeName(studentName);
-    const officialNorm = normalizeName(student?.name);
-    if (!student || inputNorm !== officialNorm) {
-      const hint = student ? ` According to our records, Roll Number ${rollNum} is assigned to: ${student.name}.` : '';
-      showError('Roll Number and Name do not match our records. Please enter your full name exactly as in records.' + hint);
-      if (submitBtn) submitBtn.disabled = false;
-      if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
-      return;
-    }
-
     // Check if already marked attendance locally
     const attendanceKey = 'attendance_' + urlSessionId;
     const localAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
@@ -2132,15 +2208,13 @@ async function submitAttendance() {
 }
 
 // Make functions globally accessible
-window.submitAttendance = submitAttendance;
-window.copyLink = copyLink;
-window.shareWhatsApp = shareWhatsApp;
-window.handleLogin = handleLogin;
-window.handleLogout = handleLogout;
+  window.submitAttendance = submitAttendance;
+  window.copyLink = copyLink;
+  window.shareWhatsApp = shareWhatsApp;
+  window.handleLogout = handleLogout;
 
-// Initialize the app when the script loads
-initializeFirebase().catch(error => {
-  console.error('Failed to initialize Firebase:', error);
-  updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
-});
-
+  // Initialize the app when the script loads
+  initializeFirebase().catch(error => {
+    console.error('Failed to initialize Firebase:', error);
+    updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
+  });
