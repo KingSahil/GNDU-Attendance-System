@@ -22,29 +22,8 @@ let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
 
-// Function to handle page display based on URL and auth state
-function handlePageDisplay(user) {
-  const urlParams = new URLSearchParams(window.location.search);
-  const sessionId = urlParams.get('session');
-
-  // If there's a session ID in the URL, show the check-in page
-  if (sessionId) {
-    console.log('Found session in URL, showing check-in page');
-    // Hide everything initially
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('teacherDashboard').style.display = 'none';
-    document.getElementById('studentCheckin').style.display = 'block';
-    document.body.classList.add('student-checkin-page');
-    
-    showStudentCheckin(sessionId);
-  } else if (user) {
-    // User is logged in, show dashboard
-    showDashboard();
-  } else {
-    // No user and no session, show login
-    showLoginScreen();
-  }
-}
+// NOTE: handlePageDisplay is defined later in the file with enhanced logic.
+// Keeping a single implementation to avoid conflicts.
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
@@ -53,21 +32,18 @@ document.addEventListener('DOMContentLoaded', function() {
   // Check for session in URL first
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
-  
-  // Immediately check if we have a cached user session
-  const cachedUser = JSON.parse(localStorage.getItem('user') || 'null');
-  
-  if (cachedUser && !sessionId) {
-    // If we have a cached user and no session ID, show dashboard immediately
-    console.log('Found cached user, showing dashboard immediately');
-    showDashboard();
-  } else if (sessionId) {
+
+  if (sessionId) {
     // If there's a session ID, show check-in page immediately
     console.log('Found session ID, showing check-in page');
-    handlePageDisplay(null);
+    // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
+    // without assuming any auth state
+    // The canonical handlePageDisplay is defined later and will run after auth change
+    // events; here we just reflect the session view immediately.
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'block';
+    showStudentCheckin(sessionId);
   } else {
     // Otherwise show login screen
     showLoginScreen();
@@ -88,9 +64,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }));
             
             // If we're not already showing the dashboard, update the UI
-            if (document.getElementById('teacherDashboard').style.display !== 'block') {
-              handlePageDisplay(user);
-            }
+            handlePageDisplay(user);
           } else {
             // Clear cached user on logout
             localStorage.removeItem('user');
@@ -108,7 +82,11 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Initialization error:', error);
       // If there's a session ID, still try to show the check-in page
       if (sessionId) {
-        handlePageDisplay(null);
+        // Ensure the student check-in view is visible even if Firebase init failed
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('teacherDashboard').style.display = 'none';
+        document.getElementById('studentCheckin').style.display = 'block';
+        showStudentCheckin(sessionId);
       }
     });
 });
