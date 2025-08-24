@@ -889,7 +889,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Wire up Print and Export buttons
     const printBtn = document.getElementById('printBtn');
     if (printBtn) {
-      printBtn.addEventListener('click', (e) => { e.preventDefault(); printAttendance(); });
+      printBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (isAndroid()) {
+          downloadAttendancePdf();
+        } else {
+          printAttendance();
+        }
+      });
     }
     const printAsIsBtn = document.getElementById('printAsIsBtn');
     if (printAsIsBtn) {
@@ -1642,6 +1649,116 @@ async function exportToExcel() {
   } catch (err) {
     console.error('XLSX export failed:', err);
     alert('Failed to export Excel file. Please try again.');
+  }
+}
+
+// Detect Android devices
+function isAndroid() {
+  return /Android/i.test(navigator.userAgent || '');
+}
+
+// Generate and download a PDF of the current view (Android-friendly)
+async function downloadAttendancePdf() {
+  try {
+    if (typeof html2pdf === 'undefined') {
+      // Fallback if library missing
+      printAttendance();
+      return;
+    }
+
+    const filtered = applyFilters();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const title = 'GNDU Attendance';
+
+    // Build a printable container
+    const container = document.createElement('div');
+    container.style.padding = '16px';
+    container.style.fontFamily = 'Arial, Helvetica, sans-serif';
+    container.style.color = '#000';
+
+    const h1 = document.createElement('h1');
+    h1.textContent = title;
+    h1.style.fontSize = '18px';
+    h1.style.margin = '0 0 8px';
+    container.appendChild(h1);
+
+    const meta = document.createElement('div');
+    meta.style.fontSize = '12px';
+    meta.style.margin = '0 0 12px';
+    const sessionBits = [];
+    if (currentSession) {
+      if (currentSession.date) sessionBits.push(`Date: ${currentSession.date}`);
+      if (currentSession.timeSlot) sessionBits.push(`Time: ${currentSession.timeSlot}`);
+      if (currentSession.subjectName) sessionBits.push(`Subject: ${currentSession.subjectName}`);
+      if (currentSession.teacherName) sessionBits.push(`Teacher: ${currentSession.teacherName}`);
+    }
+    meta.textContent = sessionBits.join(' • ');
+    container.appendChild(meta);
+
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.fontSize = '11px';
+
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    const headers = ['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'];
+    headers.forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      th.style.border = '1px solid #333';
+      th.style.padding = '6px';
+      th.style.textAlign = 'left';
+      th.style.background = '#f0f0f0';
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    filtered.forEach((s) => {
+      const tr = document.createElement('tr');
+      const isPresent = !!attendance[s.id];
+      const cells = [
+        String(getRollNumberById(s.id)),
+        String(s.id),
+        String(s.name || ''),
+        String(s.father || ''),
+        isPresent ? 'Present' : 'Absent',
+        attendanceTime[s.id] || '-'
+      ];
+      cells.forEach((text) => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        td.style.border = '1px solid #333';
+        td.style.padding = '6px';
+        td.style.verticalAlign = 'top';
+        tr.appendChild(td);
+      });
+      if (isPresent) tr.style.background = '#eefbea';
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Prepare filename
+    const subjectPart = currentSession?.subjectCode ? `_${currentSession.subjectCode}` : '';
+    const fileName = `attendance${subjectPart}_${dateStr}.pdf`;
+
+    const opt = {
+      margin:       [10, 10, 10, 10],
+      filename:     fileName,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    // Use html2pdf to save
+    await html2pdf().from(container).set(opt).save();
+  } catch (e) {
+    console.error('PDF download failed, falling back to print:', e);
+    // Fallback to print
+    try { printAttendance(); } catch (_) {}
   }
 }
 
