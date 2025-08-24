@@ -45,8 +45,17 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('studentCheckin').style.display = 'block';
     showStudentCheckin(sessionId);
   } else {
-    // Otherwise show login screen
-    showLoginScreen();
+    // Otherwise, optimistically show dashboard instantly if we have a cached user
+    // to avoid login screen flicker while Firebase initializes. Auth listener will
+    // correct the view if the session is actually invalid/expired.
+    const cachedUser = localStorage.getItem('user');
+    if (cachedUser) {
+      console.log('Cached user found, showing dashboard immediately');
+      showDashboard();
+    } else {
+      // Fall back to showing login screen
+      showLoginScreen();
+    }
   }
   
   // Initialize Firebase in the background
