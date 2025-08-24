@@ -439,7 +439,7 @@ th:hover:not(:first-child) {
 }
 
 th.sorted {
-  background: #e74c3c;
+  background: inherit; /* keep the same gradient as unsorted header; no red */
 }
 
 th:not(:first-child)::after {

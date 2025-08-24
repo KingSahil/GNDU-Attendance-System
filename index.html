@@ -126,13 +126,21 @@
         <div class="search-box">
           <input type="text" id="search" placeholder="Search students by name or father's name...">
         </div>
+        <div class="share-buttons">
+          <button class="share-btn" id="printBtn" title="Print current view">
+            🖨️ Print
+          </button>
+          <button class="share-btn" id="exportBtn" title="Export current view to Excel (CSV)">
+            📥 Export to Excel
+          </button>
+        </div>
       </div>
 
       <div class="table-container">
         <table>
           <thead>
             <tr>
-              <th>S.No</th>
+              <th id="rollHeader">Roll Number</th>
               <th id="studentIdHeader">Student ID</th>
               <th id="nameHeader">Name</th>
               <th id="fatherHeader">Father's Name</th>
@@ -166,8 +174,8 @@
       </div>
 
       <div class="form-group">
-        <label for="studentId">Student ID</label>
-        <input type="text" id="studentId" placeholder="Enter your Student ID" required>
+        <label for="studentId">Roll Number</label>
+        <input type="text" id="studentId" placeholder="Enter your Roll Number" required>
       </div>
       <div class="form-group">
         <label for="studentName">Full Name</label>
@@ -183,6 +191,8 @@
 
   <!-- Load students.js -->
   <script src="students.js"></script>
+  <!-- ExcelJS for native .xlsx export -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <!-- Load main script -->
   <script src="script.js"></script>
 </body>

@@ -56,6 +56,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // Fall back to showing login screen
       showLoginScreen();
     }
+
+// (moved) helper functions are declared in global scope below
   }
   
   // Initialize Firebase in the background
@@ -884,12 +886,60 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('search').addEventListener('keyup', renderTable);
     }
 
+    // Wire up Print and Export buttons
+    const printBtn = document.getElementById('printBtn');
+    if (printBtn) {
+      printBtn.addEventListener('click', (e) => { e.preventDefault(); printAttendance(); });
+    }
+    const printAsIsBtn = document.getElementById('printAsIsBtn');
+    if (printAsIsBtn) {
+      printAsIsBtn.addEventListener('click', (e) => { e.preventDefault(); printTableAsIs(); });
+    }
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', (e) => { e.preventDefault(); exportToExcel(); });
+    }
+
+    // Build absolute roll number maps (1..N) once
+    if (Array.isArray(window.students)) {
+      window.rollNumbers = {}; // id -> roll
+      window.idByRoll = {};    // roll -> id
+      window.students.forEach((s, i) => {
+        const roll = i + 1;
+        const sid = String(s.id);
+        window.rollNumbers[sid] = roll;
+        window.idByRoll[roll] = sid;
+      });
+    }
+    updateRollPlaceholder();
     setupSorting();
     console.log('✅ Teacher dashboard initialized');
     // Run once on load to detect any existing session for today/selected subject
     handleSessionPrefill();
+    // Ensure initial render with proper roll numbers
+    buildRollMapsIfNeeded();
+    updateRollPlaceholder();
+    renderTable();
   } else {
     console.log('✅ Student check-in page initialized');
+    (function ensureStudentPageRollMaps(){
+      const studentList = (typeof students !== 'undefined' && Array.isArray(students))
+        ? students
+        : (Array.isArray(window.students) ? window.students : []);
+      if (!Array.isArray(studentList) || studentList.length === 0) return;
+      window.rollNumbers = window.rollNumbers || {};
+      window.idByRoll = window.idByRoll || {};
+      if (Object.keys(window.rollNumbers).length === 0) {
+        studentList.forEach((s, i) => {
+          const roll = i + 1;
+          const sid = String(s.id);
+          window.rollNumbers[sid] = roll;
+          window.idByRoll[roll] = sid;
+        });
+      }
+      updateRollPlaceholder();
+    })();
+    buildRollMapsIfNeeded();
   }
 });
 
@@ -898,6 +948,68 @@ window.addEventListener('beforeunload', function() {
 });
 
 // Sorting functions
+
+// Ensure roll maps are available
+function buildRollMapsIfNeeded() {
+  const studentList = (typeof students !== 'undefined' && Array.isArray(students))
+    ? students
+    : (Array.isArray(window.students) ? window.students : []);
+  if (!Array.isArray(studentList) || studentList.length === 0) return;
+  if (!window.rollNumbers) window.rollNumbers = {};
+  if (!window.idByRoll) window.idByRoll = {};
+  if (Object.keys(window.rollNumbers).length === 0) {
+    studentList.forEach((s, i) => {
+      const roll = i + 1;
+      const sid = String(s.id);
+      window.rollNumbers[sid] = roll;
+      window.idByRoll[roll] = sid;
+    });
+  }
+}
+
+// Get absolute roll number (1..N) for a given student id
+function getRollNumberById(id) {
+  buildRollMapsIfNeeded();
+  const sid = String(id);
+  let rn = window.rollNumbers?.[sid];
+  if (!rn) {
+    const studentList = (typeof students !== 'undefined' && Array.isArray(students))
+      ? students
+      : (Array.isArray(window.students) ? window.students : []);
+    const idx = studentList.findIndex(s => String(s.id) === sid);
+    if (idx >= 0) {
+      rn = idx + 1;
+      // cache it
+      window.rollNumbers[sid] = rn;
+      window.idByRoll[rn] = sid;
+    }
+  }
+  return rn || '';
+}
+
+// Normalize names for reliable comparison (trim, collapse spaces, case-insensitive)
+function normalizeName(str) {
+  return (str || '')
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Update student roll number input placeholder to show valid range (1..N)
+function updateRollPlaceholder() {
+  try {
+    const input = document.getElementById('studentId');
+    if (!input) return;
+    const listForTotal = (typeof students !== 'undefined' && Array.isArray(students))
+      ? students
+      : (Array.isArray(window.students) ? window.students : []);
+    const total = listForTotal.length;
+    if (total > 0) {
+      input.placeholder = `Enter your Roll Number (1-${total})`;
+    }
+  } catch {}
+}
 function compareValues(key, ascending = true) {
   return function(a, b) {
     let varA = (a[key] || '').toString().toUpperCase();
@@ -944,6 +1056,13 @@ function sortData(data) {
       
       return sortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
     });
+  } else if (sortColumn === 'roll') {
+    // Sort by absolute roll number derived from original order
+    return data.sort((a, b) => {
+      const ra = getRollNumberById(a.id) || 0;
+      const rb = getRollNumberById(b.id) || 0;
+      return sortAsc ? (ra - rb) : (rb - ra);
+    });
   }
   
   return data.sort(compareValues(sortColumn, sortAsc));
@@ -951,6 +1070,7 @@ function sortData(data) {
 
 function setupSorting() {
   const headers = {
+    'rollHeader': 'roll',
     'studentIdHeader': 'id',
     'nameHeader': 'name',
     'fatherHeader': 'father',
@@ -1023,9 +1143,11 @@ function applyFilters() {
 
   if (searchTerm !== '') {
     filtered = filtered.filter(student => {
+      const rollStr = String(getRollNumberById(student.id) || '').toLowerCase();
       return student.name.toLowerCase().includes(searchTerm) || 
             student.father.toLowerCase().includes(searchTerm) ||
-            student.id.toLowerCase().includes(searchTerm);
+            student.id.toLowerCase().includes(searchTerm) ||
+            rollStr.includes(searchTerm);
     });
     
     return filtered;
@@ -1380,7 +1502,7 @@ function renderTable() {
     if (attendance[student.id]) row.classList.add("present");
     
     row.innerHTML = `
-      <td>${index + 1}</td>
+      <td>${getRollNumberById(student.id)}</td>
       <td>${student.id}</td>
       <td>${student.name}</td>
       <td>${student.father}</td>
@@ -1397,6 +1519,141 @@ function renderTable() {
 
   updateStats();
 }
+
+// Export currently visible table data to CSV (Excel-compatible)
+function exportToExcel() {
+  const filtered = applyFilters();
+  const lines = [];
+  // Header (match UI labels)
+  lines.push(['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'].join(','));
+  // Rows
+  filtered.forEach((student, idx) => {
+    const status = attendance[student.id] ? 'Present' : 'Absent';
+    const time = attendanceTime[student.id] || '-';
+    // Escape commas and quotes
+    const cells = [
+      getRollNumberById(student.id),
+      `"${String(student.id).replace(/"/g, '""')}"`,
+      `"${String(student.name || '').replace(/"/g, '""')}"`,
+      `"${String(student.father || '').replace(/"/g, '""')}"`,
+      status,
+      `"${String(time).replace(/"/g, '""')}"`
+    ];
+    lines.push(cells.join(','));
+  });
+
+  const csvContent = '\uFEFF' + lines.join('\n'); // BOM for Excel UTF-8
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `attendance_${dateStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Print the currently visible table data
+function printAttendance() {
+  const filtered = applyFilters();
+  const dateStr = new Date().toLocaleString();
+  let html = '';
+  html += '<html><head><title>Attendance Print</title>';
+  html += '<style>'+
+          'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#000}'+
+          'h1{font-size:20px;margin:0 0 10px} h2{font-size:14px;margin:0 0 20px;color:#333}'+
+          'table{width:100%;border-collapse:collapse}'+
+          'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px}'+
+          'th{background:#f0f0f0}'+
+          'tr.present td{background:#eefbea}'+
+          '</style></head><body>';
+  html += '<h1>GNDU Attendance</h1>';
+  html += `<h2>Printed: ${dateStr}</h2>`;
+  html += '<table><thead><tr>'+
+          '<th>Roll Number</th>'+
+          '<th>Student ID</th>'+
+          '<th>Name</th>'+
+          "<th>Father's Name</th>"+
+          '<th>Status</th>'+
+          '<th>Check-in Time</th>'+
+          '</tr></thead><tbody>';
+  filtered.forEach((student, idx) => {
+    const status = attendance[student.id] ? 'Present' : 'Absent';
+    const time = attendanceTime[student.id] || '-';
+    html += '<tr class="'+(attendance[student.id] ? 'present' : '')+'">'+
+            `<td>${getRollNumberById(student.id)}</td>`+
+            `<td>${String(student.id)}</td>`+
+            `<td>${String(student.name || '')}</td>`+
+            `<td>${String(student.father || '')}</td>`+
+            `<td>${status}</td>`+
+            `<td>${time}</td>`+
+            '</tr>';
+  });
+  html += '</tbody></table></body></html>';
+
+  const w = window.open('', '_blank');
+  if (!w) return;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  // Give the new window a moment to render before printing
+  setTimeout(() => { w.print(); w.close(); }, 300);
+}
+
+// Print the table exactly as it appears on the page with full styling
+function printTableAsIs() {
+  try {
+    const container = document.querySelector('.table-container');
+    if (!container) {
+      alert('Table not found to print.');
+      return;
+    }
+    const theme = document.body.getAttribute('data-theme') || '';
+    const tableHTML = container.innerHTML; // includes <table> markup
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    const doc = `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Print - Original Table</title>
+        <link rel="stylesheet" href="styles.css" />
+        <style>
+          /* Ensure print-friendly spacing */
+          body { background: white !important; padding: 20px; }
+          .table-container { box-shadow: none; border-radius: 0; }
+          .scroll-hint, .controls, .stats, .link-section, .current-class-info { display: none !important; }
+          @media print {
+            .table-container { overflow: visible !important; }
+          }
+        </style>
+      </head>
+      <body ${theme ? `data-theme="${theme}"` : ''}>
+        <div class="table-container">${tableHTML}</div>
+        <script>
+          setTimeout(function(){ window.print(); window.close(); }, 300);
+        <\/script>
+      </body>
+    </html>`;
+
+    w.document.open();
+    w.document.write(doc);
+    w.document.close();
+  } catch (err) {
+    console.error('Print as-is failed', err);
+    alert('Unable to print the table.');
+  }
+}
+
+// Expose for debugging/manual calls
+window.exportToExcel = exportToExcel;
+window.printAttendance = printAttendance;
+window.printTableAsIs = printTableAsIs;
 
 async function showStudentCheckin(sessionParam) {
   console.log('🔍 Loading session data for:', sessionParam);
@@ -1620,7 +1877,7 @@ async function submitAttendance() {
     errorFields.push('secretCodeInput');
   }
   if (!studentId) {
-    errors.push('Student ID');
+    errors.push('Roll Number');
     errorFields.push('studentId');
   }
   if (!studentName) {
@@ -1644,6 +1901,23 @@ async function submitAttendance() {
     }
     
     showError(`Please fill in the following required fields: ${errors.join(', ')}`);
+    return;
+  }
+
+  // Validate Roll Number format and range (1..N)
+  const rollNum = parseInt(studentId, 10);
+  const listForTotal = (typeof students !== 'undefined' && Array.isArray(students))
+    ? students
+    : (Array.isArray(window.students) ? window.students : []);
+  let total = listForTotal.length;
+  // Fallback to map length if list not available
+  if (!total && window.idByRoll) total = Object.keys(window.idByRoll).length;
+  if (!total) {
+    showError('Student list not loaded yet. Please refresh the page and try again.');
+    return;
+  }
+  if (!Number.isInteger(rollNum) || rollNum < 1 || rollNum > total) {
+    showError(`Roll Number must be a number between 1 and ${total} (inclusive).`);
     return;
   }
 
@@ -1686,15 +1960,21 @@ async function submitAttendance() {
   }
   if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
 
-  // Verify student
+  // Verify student using Roll Number -> Student ID mapping
   try {
-    const student = students.find(s => 
-      s?.id?.toString().toLowerCase() === studentId.toLowerCase() && 
-      s?.name?.toLowerCase() === studentName.toLowerCase()
-    );
-
-    if (!student) {
-      showError('Student ID and Name do not match our records. Please check your spelling and try again.');
+    // Ensure maps exist
+    buildRollMapsIfNeeded();
+    let mappedStudentId = window.idByRoll?.[rollNum];
+    if (!mappedStudentId && Array.isArray(students) && students[rollNum - 1]) {
+      mappedStudentId = String(students[rollNum - 1].id);
+    }
+    const studentList = Array.isArray(students) ? students : (Array.isArray(window.students) ? window.students : []);
+    const student = studentList.find(s => s?.id?.toString() === String(mappedStudentId));
+    const inputNorm = normalizeName(studentName);
+    const officialNorm = normalizeName(student?.name);
+    if (!student || inputNorm !== officialNorm) {
+      const hint = student ? ` According to our records, Roll Number ${rollNum} is assigned to: ${student.name}.` : '';
+      showError('Roll Number and Name do not match our records. Please enter your full name exactly as in records.' + hint);
       if (submitBtn) submitBtn.disabled = false;
       if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
       return;
