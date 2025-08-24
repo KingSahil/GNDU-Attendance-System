@@ -15,86 +15,159 @@ let firebaseInitialized = false;
 let auth;
 let sessionId = null;
 
-// Check for session in URL immediately
-const urlParams = new URLSearchParams(window.location.search);
-sessionId = urlParams.get('session');
+// Function to handle page display based on URL and auth state
+function handlePageDisplay(user) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session');
 
-// If there's a session ID in the URL, show the check-in page immediately
-if (sessionId) {
-  console.log('Found session in URL, showing check-in page');
-  // Hide everything initially
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('teacherDashboard').style.display = 'none';
-  document.getElementById('studentCheckin').style.display = 'block';
-  
-  // Initialize Firebase in the background but don't wait for it
-  initializeFirebase();
-  showStudentCheckin(sessionId);
-} else {
-  // Normal flow - initialize Firebase first
-  initializeFirebase();
+  // If there's a session ID in the URL, show the check-in page
+  if (sessionId) {
+    console.log('Found session in URL, showing check-in page');
+    // Hide everything initially
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'block';
+    document.body.classList.add('student-checkin-page');
+    
+    showStudentCheckin(sessionId);
+  } else if (user) {
+    // User is logged in, show dashboard
+    showDashboard();
+  } else {
+    // No user and no session, show login
+    showLoginScreen();
+  }
 }
 
-function initializeFirebase() {
-  // Initialize Firebase
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.firestore();
-  auth = firebase.auth();
-
-  // Enable offline persistence
-  db.enablePersistence({ experimentalForceOwningTab: true })
-    .catch((err) => {
-      console.warn('Firebase persistence error:', err);
-      if (err.code === 'failed-precondition') {
-        console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-      } else if (err.code === 'unimplemented') {
-        console.warn('The current browser does not support all of the features required to enable persistence');
-      }
-    });
-
-  // Set persistence to LOCAL to keep users logged in
-  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+// Wait for DOM to be fully loaded before initializing
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🚀 GNDU Attendance System starting...');
+  
+  // Check for session in URL first
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session');
+  
+  // Immediately check if we have a cached user session
+  const cachedUser = JSON.parse(localStorage.getItem('user') || 'null');
+  
+  if (cachedUser && !sessionId) {
+    // If we have a cached user and no session ID, show dashboard immediately
+    console.log('Found cached user, showing dashboard immediately');
+    showDashboard();
+  } else if (sessionId) {
+    // If there's a session ID, show check-in page immediately
+    console.log('Found session ID, showing check-in page');
+    handlePageDisplay(null);
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'block';
+  } else {
+    // Otherwise show login screen
+    showLoginScreen();
+  }
+  
+  // Initialize Firebase in the background
+  initializeFirebase()
     .then(() => {
-      console.log('Auth persistence set to LOCAL');
-      // Enable network but don't fail if offline
-      return db.enableNetwork().catch(err => {
-        console.warn('Working in offline mode', err);
-        updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
+      // Set up auth state listener
+      return new Promise((resolve) => {
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+          if (user) {
+            // Save user to cache
+            localStorage.setItem('user', JSON.stringify({
+              email: user.email,
+              uid: user.uid,
+              displayName: user.displayName
+            }));
+            
+            // If we're not already showing the dashboard, update the UI
+            if (document.getElementById('teacherDashboard').style.display !== 'block') {
+              handlePageDisplay(user);
+            }
+          } else {
+            // Clear cached user on logout
+            localStorage.removeItem('user');
+          }
+          
+          // Unsubscribe after first auth state change
+          if (unsubscribe) {
+            unsubscribe();
+          }
+          resolve(user);
+        });
       });
     })
-    .then(() => {
-      firebaseInitialized = true;
-      updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
-      console.log('✅ Firebase initialized and connected successfully');
-      
-      // Only set up auth state listener if not already on student check-in page
-      if (!sessionId) {
-        auth.onAuthStateChanged((user) => {
-          if (user) {
-            console.log('User is signed in:', user.email);
-            showDashboard();
-          } else {
-            console.log('No user is signed in');
-            showLoginScreen();
-          }
-        });
+    .catch(error => {
+      console.error('Initialization error:', error);
+      // If there's a session ID, still try to show the check-in page
+      if (sessionId) {
+        handlePageDisplay(null);
       }
-    })
-    .catch((error) => {
-      console.error('Firebase initialization error:', error);
-      updateFirebaseStatus('⚠️ Firebase connection error', 'error');
     });
-}
+});
 
 // Sorting variables
 let sortColumn = null;
 let sortAsc = true;
 let statusSortMode = null;
 
-// Location checking variables
-const UNIVERSITY_LAT = 31.635428012027894;
-const UNIVERSITY_LNG = 74.82433444456309;
-const ALLOWED_RADIUS_METERS = 150;
+function initializeFirebase() {
+  return new Promise((resolve, reject) => {
+    try {
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      auth = firebase.auth();
+      
+      console.log('Firebase initialized successfully');
+      
+      // Set auth persistence
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .then(() => {
+          console.log('Auth persistence set to LOCAL');
+          
+          // Enable offline persistence for Firestore
+          return db.enablePersistence({ experimentalForceOwningTab: true });
+        })
+        .then(() => {
+          console.log('Firebase persistence enabled');
+          
+          // Enable network but don't fail if offline
+          return db.enableNetwork().catch(err => {
+            console.warn('Working in offline mode', err);
+            updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
+          });
+        })
+        .then(() => {
+          console.log('Firebase initialization complete');
+          firebaseInitialized = true;
+          updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
+          resolve();
+        })
+        .catch((err) => {
+          console.warn('Firebase initialization warning:', err);
+          if (err.code === 'failed-precondition') {
+            console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+          } else if (err.code === 'unimplemented') {
+            console.warn('The current browser does not support all of the features required to enable persistence');
+          }
+          // Still resolve even if there were non-critical errors
+          firebaseInitialized = true;
+          updateFirebaseStatus('⚠️ Limited offline functionality', 'warning');
+          resolve();
+        });
+    } catch (error) {
+      console.error('Failed to initialize Firebase:', error);
+      updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
+      reject(error);
+    }
+  });
+}
+
+// Location checking variables - GNDU coordinates
+const UNIVERSITY_LAT = 31.648999;  // GNDU latitude
+const UNIVERSITY_LNG = 74.818261;  // GNDU longitude
+const ALLOWED_RADIUS_METERS = 150;  // 150 meters radius
 
 // Timetable data
 const timetable = {
@@ -144,28 +217,48 @@ const subjectNames = {
 };
 
 // Firebase Authentication functions
-async function handleLogin() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
+window.handleLogin = async function() {
+  console.log('Login button clicked');
+  
+  // Check if auth is initialized
+  if (!auth) {
+    console.error('Firebase auth not initialized');
+    alert('Authentication service is not ready. Please refresh the page.');
+    return;
+  }
+  
+  const email = document.getElementById('loginEmail')?.value?.trim();
+  const password = document.getElementById('loginPassword')?.value;
   const messageDiv = document.getElementById('loginMessage');
   const loginBtn = document.getElementById('loginBtn');
 
   if (!email || !password) {
-    messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
+    if (messageDiv) {
+      messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
+    }
     return;
   }
 
-  loginBtn.disabled = true;
-  loginBtn.textContent = 'Signing in...';
-  messageDiv.innerHTML = '';
+  if (loginBtn) {
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing in...';
+  }
+  
+  if (messageDiv) {
+    messageDiv.innerHTML = '';
+  }
 
   try {
+    console.log('Attempting to sign in with email:', email);
     // Sign in with email and password
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
     
-    messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
-    console.log('User logged in:', user.email);
+    console.log('Login successful for user:', user.email);
+    
+    if (messageDiv) {
+      messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
+    }
     
     // Show dashboard after successful login
     showDashboard();
@@ -244,21 +337,36 @@ async function handleLogout() {
 }
 
 function showLoginScreen() {
-  document.getElementById('loginScreen').style.display = 'block';
-  document.getElementById('teacherDashboard').style.display = 'none';
-  document.getElementById('studentCheckin').style.display = 'none';
+  // Only show login screen if we're not in student check-in mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session');
   
-  document.getElementById('loginEmail').value = '';
-  document.getElementById('loginPassword').value = '';
-  document.getElementById('loginMessage').innerHTML = '';
-  document.getElementById('loginBtn').disabled = false;
-  document.getElementById('loginBtn').textContent = 'Login';
+  if (!sessionId) {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'none';
+    document.body.classList.remove('dashboard-view', 'student-checkin-page');
+    document.body.classList.add('login-view');
+  }
 }
 
 function showDashboard() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('teacherDashboard').style.display = 'block';
-  document.getElementById('studentCheckin').style.display = 'none';
+  // Only show dashboard if we're not in student check-in mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionId = urlParams.get('session');
+  
+  if (!sessionId) {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'block';
+    document.getElementById('studentCheckin').style.display = 'none';
+    document.body.classList.remove('login-view', 'student-checkin-page');
+    document.body.classList.add('dashboard-view');
+    
+    // Reset the URL to remove any session parameters
+    if (window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
 }
 
 // Function to handle page display based on URL and auth state
@@ -284,13 +392,14 @@ function handlePageDisplay(user) {
   }
 }
 
-// Geolocation functions
+
+// Location checking utilities
 function toRadians(degrees) {
   return degrees * (Math.PI / 180);
 }
 
 function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
+  const R = 6371000; // Earth's radius in meters
   const dLat = toRadians(lat2 - lat1);
   const dLng = toRadians(lng2 - lng1);
   const a = 
@@ -301,123 +410,188 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-function updateLocationStatus(message, className) {
-  const statusDiv = document.getElementById('locationStatus');
-  if (statusDiv) {
-    statusDiv.textContent = message;
-    statusDiv.className = `location-status ${className}`;
+function showLocationStatus(message, status, isLoading = false) {
+  const statusElement = document.getElementById('locationStatus');
+  if (!statusElement) return;
+  
+  // Clear previous content and classes
+  statusElement.className = `location-status ${status} show`;
+  statusElement.innerHTML = '';
+  
+  // Add icon based on status
+  let icon = '';
+  if (isLoading) {
+    icon = '<div class="loading-spinner"></div>';
+  } else if (status === 'allowed') {
+    icon = '<i class="fas fa-check-circle"></i>';
+  } else if (status === 'denied') {
+    icon = '<i class="fas fa-exclamation-circle"></i>';
+  }
+  
+  // Add message
+  const messageElement = document.createElement('span');
+  messageElement.textContent = message;
+  
+  // Build the status element
+  statusElement.innerHTML = icon;
+  statusElement.appendChild(messageElement);
+  
+  // Add pulse effect for loading state
+  if (isLoading) {
+    statusElement.classList.add('pulse');
+  } else {
+    statusElement.classList.remove('pulse');
   }
 }
 
-async function checkUserLocation() {
-  console.log('🌐 Starting location check...');
+async function checkUserLocation(retryCount = 0) {
+  const maxRetries = 3;
   
   if (!navigator.geolocation) {
-    const errorMsg = '❌ Location services not supported by your browser';
-    console.error(errorMsg);
-    updateLocationStatus(errorMsg, 'denied');
+    showLocationStatus('Geolocation is not supported by your browser', 'error');
     return false;
   }
   
-  // Check if we're running in a secure context (required for geolocation)
-  if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-    const errorMsg = '❌ Please use HTTPS for location services to work';
-    console.error(errorMsg);
-    updateLocationStatus(errorMsg, 'denied');
-    return false;
+  // For production, we recommend using HTTPS, but allow HTTP for local development
+  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    console.warn('For production, please use HTTPS for better security');
+    // Continue with location check even without HTTPS
   }
   
-  // Check geolocation permission status
-  if (navigator.permissions) {
-    try {
-      const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-      console.log('🔒 Geolocation permission status:', permissionStatus.state);
-      
-      if (permissionStatus.state === 'denied') {
-        const errorMsg = '❌ Location permission denied. Please enable it in your browser settings.';
-        console.error(errorMsg);
-        updateLocationStatus(errorMsg, 'denied');
-        return false;
-      }
-      
-      // Listen for permission changes
-      permissionStatus.onchange = () => {
-        console.log('🔄 Geolocation permission changed to:', permissionStatus.state);
-        if (permissionStatus.state === 'granted') {
-          window.location.reload();
-        }
-      };
-    } catch (error) {
-      console.warn('⚠️ Could not check geolocation permission status:', error);
-    }
-  }
-
+  // Show loading state
+  showLocationStatus('Getting your location...', 'info', true);
+  
   return new Promise((resolve) => {
-    updateLocationStatus('📍 Getting your location...', 'checking');
-    
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,  // 10 seconds
-      maximumAge: 0     // Force fresh location
+      timeout: 15000,
+      maximumAge: 0
     };
     
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const userLat = position.coords.latitude;
-        const userLng = position.coords.longitude;
-        const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
+    // Debug: Log that we're starting location check
+    console.log('Starting location check with options:', options);
+    
+    const handleSuccess = (position) => {
+      try {
+        const { latitude, longitude, accuracy } = position.coords;
+        console.log('Got location:', { 
+          latitude, 
+          longitude, 
+          accuracy,
+          universityLat: UNIVERSITY_LAT,
+          universityLng: UNIVERSITY_LNG
+        });
         
-        console.log(`📍 User location: ${userLat}, ${userLng}`);
-        console.log(`🏫 University location: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
-        console.log(`📏 Distance from university: ${distance.toFixed(2)} meters`);
+        // Calculate distance in meters
+        const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
+        const distanceRounded = Math.round(distance);
+        console.log(`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
+        
+        if (isNaN(distance) || !isFinite(distance)) {
+          throw new Error('Invalid distance calculation');
+        }
         
         if (distance <= ALLOWED_RADIUS_METERS) {
-          updateLocationStatus(`✅ You are inside university campus (${distance.toFixed(0)}m from center)`, 'allowed');
-          resolve(true);
+          const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
+          console.log(successMsg);
+          showLocationStatus(successMsg, 'success');
+          resolve({ success: true, distance: distanceRounded });
         } else {
-          updateLocationStatus(`❌ You are outside university campus (${distance.toFixed(0)}m away). You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`, 'denied');
-          resolve(false);
+          const statusMsg = `❌ You're ${distanceRounded}m from GNDU (must be within ${ALLOWED_RADIUS_METERS}m)`;
+          console.log(statusMsg);
+          showLocationStatus(statusMsg, 'error');
+          resolve({ success: false, distance: distanceRounded });
         }
-      },
-      (error) => {
-        console.error('❌ Geolocation error:', error);
-        let errorMessage = '';
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = '❌ Location access denied. Please allow location access to continue.';
-            // Show a button to open settings
-            const locationStatus = document.getElementById('locationStatus');
-            if (locationStatus) {
-              locationStatus.innerHTML += `
-                <div style="margin-top: 10px;">
-                  <button onclick="requestLocationPermission()" style="
-                    background: #3498db;
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                  ">
-                    Grant Location Permission
-                  </button>
-                </div>`;
+      } catch (error) {
+        console.error('Error processing location:', error);
+        showLocationStatus('❌ Error processing your location', 'error');
+        resolve({ success: false, error: error.message });
+      }
+    };
+    
+    const handleError = (error) => {
+      console.error('Error getting location:', error);
+      let message = '❌ Error: ';
+      
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          message += 'Location permission denied. Please enable location access in your browser settings.';
+          break;
+        case error.POSITION_UNAVAILABLE:
+          message += 'Location information is unavailable. Please check your internet connection.';
+          break;
+        case error.TIMEOUT:
+          message += 'The request to get your location timed out.';
+          break;
+        default:
+          message += 'Could not get your location.';
+      }
+      
+      if (retryCount < maxRetries) {
+        message += ` Retrying... (${retryCount + 1}/${maxRetries})`;
+        showLocationStatus(message, 'warning');
+        setTimeout(() => {
+          checkUserLocation(retryCount + 1).then(result => {
+          if (result && typeof result === 'object' && 'success' in result) {
+            resolve(result);
+          } else {
+            // Handle legacy boolean return value for backward compatibility
+            resolve({ success: result, distance: 0 });
+          }
+        });
+        }, 2000);
+        return;
+      }
+      
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          message = 'Location permission denied. Please enable it to continue.';
+          break;
+        case error.POSITION_UNAVAILABLE:
+          message = 'Location information is unavailable.';
+          break;
+        case error.TIMEOUT:
+          message = 'The request to get your location timed out.';
+          break;
+        default:
+          message = 'An unknown error occurred while getting your location.';
+      }
+      
+      showLocationStatus(message, 'error');
+      resolve(false);
+    };
+    
+    // Check permissions first if supported
+    if (navigator.permissions) {
+      navigator.permissions.query({name: 'geolocation'})
+        .then(permissionStatus => {
+          console.log('Geolocation permission state:', permissionStatus.state);
+          
+          if (permissionStatus.state === 'denied') {
+            handleError({ code: 'PERMISSION_DENIED' });
+            return;
+          }
+          
+          // If permission is granted or prompt, proceed with getting location
+          navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+          
+          // Listen for permission changes
+          permissionStatus.onchange = () => {
+            console.log('Geolocation permission changed to:', permissionStatus.state);
+            if (permissionStatus.state === 'granted') {
+              navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
             }
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = '❌ Location information is unavailable. Please check your device settings.';
-            break;
-          case error.TIMEOUT:
-            errorMessage = '❌ The request to get your location timed out. Please try again.';
-            break;
-          case error.UNKNOWN_ERROR:
-            errorMessage = '❌ An unknown error occurred while getting your location.';
-            break;
-        }
-        updateLocationStatus(errorMessage, 'denied');
-        resolve(false);
-      },
-      options
-    );
+          };
+        })
+        .catch(error => {
+          console.warn('Error checking geolocation permission:', error);
+          // If permission query fails, try getting location anyway
+          navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+        });
+    } else {
+      // For browsers that don't support permissions API
+      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+    }
   });
 }
 
@@ -856,6 +1030,10 @@ async function findExistingSession(date, subjectCode) {
 }
 
 async function loadExistingAttendance(sessionId) {
+  // Keep existing attendance data to prevent UI flicker
+  const existingAttendance = { ...attendance };
+  const existingAttendanceTime = { ...attendanceTime };
+  
   attendance = {};
   attendanceTime = {};
 
@@ -888,10 +1066,19 @@ async function loadExistingAttendance(sessionId) {
   const localAttendanceKey = 'attendance_' + sessionId;
   const localAttendance = JSON.parse(localStorage.getItem(localAttendanceKey) || '{}');
   
+  // Merge local attendance with existing data
   Object.keys(localAttendance).forEach(studentId => {
     if (!attendance[studentId]) {
       attendance[studentId] = true;
       attendanceTime[studentId] = localAttendance[studentId].time || '-';
+    }
+  });
+  
+  // Preserve any existing attendance that wasn't overwritten
+  Object.keys(existingAttendance).forEach(studentId => {
+    if (!attendance[studentId]) {
+      attendance[studentId] = existingAttendance[studentId];
+      attendanceTime[studentId] = existingAttendanceTime[studentId] || '-';
     }
   });
 
@@ -1225,15 +1412,24 @@ async function updateSessionFromFirestore(sessionParam) {
 }
 
 function showError(message) {
-  const checkinSection = document.getElementById('studentCheckin');
-  if (checkinSection) {
-    checkinSection.innerHTML = `
-      <div class="error-container">
-        <h2>❌ Error</h2>
-        <p>${message}</p>
-        <p>Please contact your teacher for assistance.</p>
-      </div>
-    `;
+  const messageDiv = document.getElementById('checkinMessage');
+  if (messageDiv) {
+    messageDiv.innerHTML = `<div class="error-message" style="animation: shake 0.5s;">❌ ${message}</div>`;
+    // Scroll to the error message
+    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Re-enable the submit button if it was disabled
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    
+    // Enable all form fields
+    const form = document.getElementById('studentCheckinForm');
+    if (form) {
+      form.querySelectorAll('input').forEach(input => input.disabled = false);
+    }
   } else {
     alert(message);
   }
@@ -1255,6 +1451,16 @@ async function displayStudentCheckin(session) {
   const checkinSection = document.getElementById('studentCheckin');
   if (checkinSection) {
     checkinSection.style.display = 'block';
+    
+    // Add form submission handler
+    const form = document.querySelector('.checkin-form');
+    if (form) {
+      form.onsubmit = function(e) {
+        e.preventDefault();
+        submitAttendance();
+        return false;
+      };
+    }
   }
   
   // Update session info
@@ -1272,49 +1478,65 @@ async function displayStudentCheckin(session) {
   const submitBtn = document.getElementById('submitBtn');
   const messageDiv = document.getElementById('checkinMessage');
   
+  let locationVerified = false;
+  let locationDistance = 0;
+  
+  // Initialize form
   if (form) form.reset();
+  
+  // Set initial button state
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Checking location...';
   }
+  
+  // Initialize location variables
+  window.locationVerified = false;
+  window.locationDistance = 0;
+  
+  // Show initial message
   if (messageDiv) {
     messageDiv.innerHTML = '<div class="info-message">Checking your location...</div>';
   }
   
   // Start location check
   try {
-    const locationAllowed = await checkUserLocation();
+    const locationResult = await checkUserLocation();
+    window.locationVerified = locationResult.success;
+    window.locationDistance = locationResult.distance || 0;
     
     if (submitBtn) {
-      submitBtn.disabled = !locationAllowed;
-      submitBtn.textContent = locationAllowed ? 'Mark Me Present' : 'Location Required';
-    }
-    
-    // Update location status messagewe
-    if (locationAllowed) {
-      updateLocationStatus('✅ Location verified - You are inside the campus', 'allowed');
+      submitBtn.disabled = !window.locationVerified;
+      submitBtn.textContent = 'Mark Me Present';
       
-      // Focus on the first input field
-      const firstInput = form?.querySelector('input');
-      if (firstInput) {
-        firstInput.focus();
+      // Show status message based on location result
+      if (!window.locationVerified) {
+        const distanceText = window.locationDistance >= 1000 
+          ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
+          : `${Math.round(window.locationDistance)} meters away`;
+        showLocationStatus(`❌ You are ${distanceText} from the allowed location`, 'error');
+      } else {
+        showLocationStatus('✅ Location verified - You are inside the campus', 'success');
       }
-    } else {
-      updateLocationStatus('❌ You must be inside the university campus to mark attendance', 'denied');
     }
   } catch (error) {
     console.error('Error during location check:', error);
     if (messageDiv) {
       messageDiv.innerHTML = `
         <div class="error-message">
-          Error checking location. Please ensure location services are enabled and try again.
-          <button onclick="window.location.reload()" class="retry-button">Retry</button>
+          Error checking location. Please ensure location services are enabled and refresh the page.
         </div>`;
     }
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Location Error';
     }
+  }
+  
+  // Focus on the first input field after location check
+  const firstInput = form?.querySelector('input');
+  if (firstInput) {
+    firstInput.focus();
   }
 }
 
@@ -1329,17 +1551,56 @@ async function submitAttendance() {
 
   console.log('📝 Submitting attendance:', { urlSessionId, studentId, studentName });
 
-  // Reset any previous messages
-  if (messageDiv) messageDiv.innerHTML = '';
+  // Reset any previous messages and errors
+  if (messageDiv) {
+    messageDiv.innerHTML = '';
+    // Remove any error highlights
+    const form = document.getElementById('studentCheckinForm');
+    if (form) {
+      form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+      form.querySelectorAll('.error-text').forEach(el => el.remove());
+    }
+  }
   
   // Basic validation
   if (!urlSessionId) {
     showError('Invalid session. Please use a valid attendance link.');
     return;
   }
-
-  if (!studentId || !studentName || !secretCodeInput) {
-    showError('Please fill in all fields including the secret code');
+  
+  // Validate required fields
+  const errors = [];
+  const errorFields = [];
+  
+  if (!secretCodeInput) {
+    errors.push('Secret Code');
+    errorFields.push('secretCodeInput');
+  }
+  if (!studentId) {
+    errors.push('Student ID');
+    errorFields.push('studentId');
+  }
+  if (!studentName) {
+    errors.push('Full Name');
+    errorFields.push('studentName');
+  }
+  
+  if (errors.length > 0) {
+    // Highlight the first error field
+    if (errorFields.length > 0) {
+      const firstErrorField = document.getElementById(errorFields[0]);
+      if (firstErrorField) {
+        firstErrorField.focus();
+        firstErrorField.classList.add('input-error');
+        // Add error message below the input
+        const errorText = document.createElement('div');
+        errorText.className = 'error-text';
+        errorText.textContent = 'This field is required';
+        firstErrorField.parentNode.insertBefore(errorText, firstErrorField.nextSibling);
+      }
+    }
+    
+    showError(`Please fill in the following required fields: ${errors.join(', ')}`);
     return;
   }
 
@@ -1365,18 +1626,13 @@ async function submitAttendance() {
     return;
   }
 
-  // Verify location
-  updateLocationStatus('📍 Verifying your location...', 'checking');
-  let locationAllowed = false;
-  try {
-    locationAllowed = await checkUserLocation();
-    if (!locationAllowed) {
-      showError('❌ You must be inside the university campus to mark attendance. Please move to the campus and try again.');
-      return;
-    }
-  } catch (error) {
-    console.error('Location verification failed:', error);
-    showError('❌ Unable to verify your location. Please ensure location services are enabled and try again.');
+  // Use the location result from the initial check
+  if (!window.locationVerified) {
+    const distance = window.locationDistance || 0;
+    const distanceText = distance >= 1000 
+      ? `${(distance / 1000).toFixed(1)} km away` 
+      : `${Math.round(distance)} meters away`;
+    showError(`❌ You must be inside the university campus to mark attendance. You are ${distanceText} from the allowed location.`);
     return;
   }
 
@@ -1558,3 +1814,10 @@ window.copyLink = copyLink;
 window.shareWhatsApp = shareWhatsApp;
 window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
+
+// Initialize the app when the script loads
+initializeFirebase().catch(error => {
+  console.error('Failed to initialize Firebase:', error);
+  updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
+});
+

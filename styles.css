@@ -577,6 +577,57 @@ tbody tr:nth-child(even) {
 
 .checkin-form .form-group {
   margin-bottom: 20px;
+  position: relative;
+}
+
+.input-error {
+  border-color: #ff6b6b !important;
+  background-color: #fff5f5 !important;
+  animation: pulse 0.5s ease-in-out;
+}
+
+.error-text {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  display: block;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.error-message {
+  background-color: #fff5f5;
+  border-left: 4px solid #ff6b6b;
+  color: #cc0000;
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 4px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.success-message {
+  background-color: #f0fff4;
+  border-left: 4px solid #48bb78;
+  color: #2f855a;
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 4px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 107, 107, 0); }
 }
 
 .checkin-btn {
@@ -622,32 +673,113 @@ tbody tr:nth-child(even) {
   border: 1px solid #f5c6cb;
 }
 
+/* Location Status Styles */
 .location-status {
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  padding: 15px;
-  margin-bottom: 20px;
-  border-radius: 8px;
-  text-align: center;
-  font-weight: 600;
+  position: relative;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  border-radius: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  background: #e7f5ff;
+  color: #0056b3;
+  border: 1px solid #b3d7ff;
+  flex-wrap: wrap;
+}
+
+.retry-button {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-left: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.retry-button:hover {
+  background: #357abd;
+}
+
+.location-status.denied .retry-button {
+  background: #e74c3c;
+}
+
+.location-status.denied .retry-button:hover {
+  background: #c0392b;
+}
+
+.location-status::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.location-status.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.location-status i {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.location-status .loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: currentColor;
+  animation: spin 0.8s linear infinite;
+  margin-right: 4px;
 }
 
 .location-status.allowed {
-  background: #d4edda;
-  border-color: #c3e6cb;
-  color: #155724;
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+  border: 1px solid rgba(40, 167, 69, 0.2);
 }
 
 .location-status.denied {
-  background: #f8d7da;
-  border-color: #f5c6cb;
-  color: #721c24;
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.2);
 }
 
 .location-status.checking {
-  background: #d1ecf1;
-  border-color: #b8daff;
-  color: #0c5460;
+  background: rgba(23, 162, 184, 0.1);
+  color: #17a2b8;
+  border: 1px solid rgba(23, 162, 184, 0.2);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pulse animation for location status */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(23, 162, 184, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(23, 162, 184, 0); }
+}
+
+.location-status.pulse {
+  animation: pulse 2s infinite;
 }
 
 .loading-message {

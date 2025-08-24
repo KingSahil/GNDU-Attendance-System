@@ -154,7 +154,7 @@
       <p>GNDU Attendance System</p>
       <p id="checkinClassInfo"></p>
     </div>
-    <div class="checkin-form">
+    <form id="studentCheckinForm" onsubmit="event.preventDefault(); submitAttendance(); return false;" class="checkin-form">
       <div class="location-status checking" id="locationStatus">
         📍 Checking your location...
       </div>
@@ -173,9 +173,9 @@
         <label for="studentName">Full Name</label>
         <input type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
-      <button class="checkin-btn" id="submitBtn" onclick="submitAttendance()" disabled>Mark Me Present</button>
+      <button type="submit" class="checkin-btn" id="submitBtn" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>
-    </div>
+    </form>
   </div>
 
   <!-- Notification -->
