@@ -14,6 +14,13 @@ let db;
 let firebaseInitialized = false;
 let auth;
 let sessionId = null;
+let attendanceListener = null; // Initialize the attendance listener
+// Global state used across attendance features
+let attendance = {};
+let attendanceTime = {};
+let currentSession = null;
+let sessionSecretCode = '';
+let checkinUrl = '';
 
 // Function to handle page display based on URL and auth state
 function handlePageDisplay(user) {
