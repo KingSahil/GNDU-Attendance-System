@@ -1727,15 +1727,20 @@ async function downloadAttendancePdf() {
         isPresent ? 'Present' : 'Absent',
         attendanceTime[s.id] || '-'
       ];
-      cells.forEach((text) => {
+      cells.forEach((text, idx) => {
         const td = document.createElement('td');
         td.textContent = text;
         td.style.border = '1px solid #333';
         td.style.padding = '6px';
         td.style.verticalAlign = 'top';
+        if (idx === 4) { // Status column styling for better contrast
+          td.style.fontWeight = '700';
+          td.style.color = isPresent ? '#0a5a0a' : '#b00020';
+          td.style.textAlign = 'left';
+        }
         tr.appendChild(td);
       });
-      if (isPresent) tr.style.background = '#eefbea';
+      if (isPresent) tr.style.background = '#dff0d8'; // darker success background
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
