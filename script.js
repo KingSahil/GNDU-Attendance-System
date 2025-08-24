@@ -697,6 +697,53 @@ function validateForm() {
   return isValid;
 }
 
+// When date/subject changes, check if a session already exists and prefill
+async function handleSessionPrefill() {
+  try {
+    const dateVal = document.getElementById('attendanceDate')?.value;
+    const subjectCode = document.getElementById('subjectCode')?.value;
+    const secretInput = document.getElementById('secretCode');
+    const startBtn = document.getElementById('startBtn');
+
+    if (!dateVal || !subjectCode) {
+      if (startBtn) startBtn.textContent = 'Start Attendance Session';
+      if (secretInput) secretInput.readOnly = false;
+      return;
+    }
+
+    const selectedDate = new Date(dateVal);
+    const formattedDate = selectedDate.toLocaleDateString('en-GB');
+
+    const existing = await findExistingSession(formattedDate, subjectCode);
+    if (existing && existing.id) {
+      // Prefill and lock secret code, update button label
+      sessionId = existing.id;
+      currentSession = existing;
+      sessionSecretCode = existing.secretCode || '';
+
+      if (secretInput) {
+        secretInput.value = sessionSecretCode;
+        secretInput.readOnly = true;
+      }
+      if (startBtn) startBtn.textContent = 'View Attendance Session';
+
+      // Ensure button gets enabled
+      validateForm();
+    } else {
+      // No existing session, restore defaults and clear secret code
+      if (secretInput) {
+        secretInput.readOnly = false;
+        secretInput.value = '';
+      }
+      if (startBtn) startBtn.textContent = 'Start Attendance Session';
+      // Update validation because we cleared the secret
+      validateForm();
+    }
+  } catch (e) {
+    console.warn('handleSessionPrefill error:', e);
+  }
+}
+
 function generateSessionId() {
   return 'ATT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
@@ -834,8 +881,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('attendanceDate').value = today;
     
-    document.getElementById('attendanceDate').addEventListener('change', validateForm);
-    document.getElementById('subjectCode').addEventListener('change', validateForm);
+    document.getElementById('attendanceDate').addEventListener('change', () => { validateForm(); handleSessionPrefill(); });
+    document.getElementById('subjectCode').addEventListener('change', () => { validateForm(); handleSessionPrefill(); });
     document.getElementById('secretCode').addEventListener('input', validateForm);
     document.getElementById('startBtn').addEventListener('click', startAttendance);
     
@@ -852,6 +899,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     setupSorting();
     console.log('✅ Teacher dashboard initialized');
+    // Run once on load to detect any existing session for today/selected subject
+    handleSessionPrefill();
   } else {
     console.log('✅ Student check-in page initialized');
   }
