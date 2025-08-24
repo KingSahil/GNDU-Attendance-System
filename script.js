@@ -455,7 +455,7 @@ async function checkUserLocation(retryCount = 0) {
   const maxRetries = 3;
   
   if (!navigator.geolocation) {
-    showLocationStatus('Geolocation is not supported by your browser', 'error');
+    showLocationStatus('Geolocation is not supported by your browser', 'denied');
     return false;
   }
   
@@ -466,7 +466,7 @@ async function checkUserLocation(retryCount = 0) {
   }
   
   // Show loading state
-  showLocationStatus('Getting your location...', 'info', true);
+  showLocationStatus('Getting your location...', 'checking', true);
   
   return new Promise((resolve) => {
     const options = {
@@ -501,17 +501,17 @@ async function checkUserLocation(retryCount = 0) {
         if (distance <= ALLOWED_RADIUS_METERS) {
           const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
           console.log(successMsg);
-          showLocationStatus(successMsg, 'success');
+          showLocationStatus(successMsg, 'allowed');
           resolve({ success: true, distance: distanceRounded });
         } else {
           const statusMsg = `❌ You're ${distanceRounded}m from GNDU (must be within ${ALLOWED_RADIUS_METERS}m)`;
           console.log(statusMsg);
-          showLocationStatus(statusMsg, 'error');
+          showLocationStatus(statusMsg, 'denied');
           resolve({ success: false, distance: distanceRounded });
         }
       } catch (error) {
         console.error('Error processing location:', error);
-        showLocationStatus('❌ Error processing your location', 'error');
+        showLocationStatus('❌ Error processing your location', 'denied');
         resolve({ success: false, error: error.message });
       }
     };
@@ -536,7 +536,7 @@ async function checkUserLocation(retryCount = 0) {
       
       if (retryCount < maxRetries) {
         message += ` Retrying... (${retryCount + 1}/${maxRetries})`;
-        showLocationStatus(message, 'warning');
+        showLocationStatus(message, 'checking');
         setTimeout(() => {
           checkUserLocation(retryCount + 1).then(result => {
           if (result && typeof result === 'object' && 'success' in result) {
@@ -564,7 +564,7 @@ async function checkUserLocation(retryCount = 0) {
           message = 'An unknown error occurred while getting your location.';
       }
       
-      showLocationStatus(message, 'error');
+      showLocationStatus(message, 'denied');
       resolve(false);
     };
     
@@ -1552,7 +1552,7 @@ async function displayStudentCheckin(session) {
   
   // Show initial message
   if (messageDiv) {
-    messageDiv.innerHTML = '<div class="info-message">Checking your location...</div>';
+    messageDiv.innerHTML = '';
   }
   
   // Start location check
@@ -1570,7 +1570,7 @@ async function displayStudentCheckin(session) {
         const distanceText = window.locationDistance >= 1000 
           ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
           : `${Math.round(window.locationDistance)} meters away`;
-        showLocationStatus(`❌ You are ${distanceText} from the allowed location`, 'error');
+        showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'error');
       } else {
         showLocationStatus('✅ Location verified - You are inside the campus', 'success');
       }
@@ -1688,7 +1688,7 @@ async function submitAttendance() {
     const distanceText = distance >= 1000 
       ? `${(distance / 1000).toFixed(1)} km away` 
       : `${Math.round(distance)} meters away`;
-    showError(`❌ You must be inside the university campus to mark attendance. You are ${distanceText} from the allowed location.`);
+    showError(`❌ You must be inside the university campus to mark attendance. You are ${distanceText} from GNDU.`);
     return;
   }
 
