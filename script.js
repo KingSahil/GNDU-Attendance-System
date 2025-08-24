@@ -172,8 +172,8 @@ function initializeFirebase() {
 }
 
 // Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.648999;  // GNDU latitude
-const UNIVERSITY_LNG = 74.818261;  // GNDU longitude
+const UNIVERSITY_LAT = 31.635428012027894;  // GNDU latitude
+const UNIVERSITY_LNG = 74.82433444456309;  // GNDU longitude
 const ALLOWED_RADIUS_METERS = 150;  // 150 meters radius
 
 // Timetable data

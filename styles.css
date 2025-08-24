@@ -70,6 +70,8 @@ body {
   box-shadow: 0 20px 40px rgba(0,0,0,0.1);
   overflow: hidden;
   color: var(--text-color);
+  display: flex;           /* stack header above form */
+  flex-direction: column;  /* vertical layout */
 }
 
 .login-header {
@@ -77,6 +79,8 @@ body {
   color: white;
   padding: 30px;
   text-align: center;
+  width: 100%; /* ensure header spans full width on top */
+  display: block; /* avoid side-by-side layouts */
 }
 
 .login-header h1 {
@@ -464,7 +468,28 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: var(--table-hover);
+  /* Do not alter row color on hover; keep existing background (zebra/present/etc.) */
+  background: transparent !important;
+}
+
+/* Keep zebra striping color on hover (light theme) */
+tbody tr:nth-child(even):hover {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* Keep zebra striping color on hover (dark theme) */
+[data-theme="dark"] tbody tr:nth-child(even):hover {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Preserve present row background on hover (light theme) */
+tbody tr.present:hover {
+  background: linear-gradient(90deg, #c8e6c9, #e8f5e8) !important;
+}
+
+/* Preserve present row background on hover (dark theme) */
+[data-theme="dark"] tbody tr.present:hover {
+  background: linear-gradient(90deg, #1b5e20, #2e7d32) !important;
 }
 
 tbody tr:nth-child(even) {
@@ -792,6 +817,15 @@ tbody tr:nth-child(even) {
   color: #856404;
 }
 
+/* Force-hide the loading message visually but keep it in the DOM for JS logic */
+#loadingMessage {
+  display: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  height: 0 !important;
+}
+
 .notification {
   position: fixed;
   top: 20px;
@@ -824,6 +858,15 @@ tbody tr:nth-child(even) {
   text-align: center;
   font-size: 0.9rem;
   color: #0066cc;
+}
+
+/* Hide the Firebase status banner visually but keep it in the DOM */
+#firebaseStatus {
+  display: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  height: 0 !important;
 }
 
 .firebase-status.connected {
