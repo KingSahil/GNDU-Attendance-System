@@ -1656,11 +1656,14 @@ function printAttendance() {
           'html,body{background:#fff !important}'+
           'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#000}'+
           'h1{font-size:20px;margin:0 0 10px} h2{font-size:14px;margin:0 0 20px;color:#333}'+
-          'table{width:100%;border-collapse:collapse}'+
-          'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px}'+
+          'table{width:100%;border-collapse:collapse;table-layout:auto}'+
+          'thead{display:table-header-group} tfoot{display:table-footer-group}'+
+          'tr, td, th{page-break-inside:avoid; break-inside:avoid}'+
+          'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px;vertical-align:top}'+
           'th{background:#f0f0f0}'+
           'tr.present td{background:#eefbea}'+
-          '@page { size: auto; margin: 10mm; }'+
+          '@page { size: A4 landscape; margin: 10mm; }'+
+          '@media print { body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; } }'+
           '</style></head><body>';
   html += '<h1>GNDU Attendance</h1>';
   html += `<h2>Printed: ${dateStr}</h2>`;
@@ -1668,7 +1671,7 @@ function printAttendance() {
           '<th>Roll Number</th>'+
           '<th>Student ID</th>'+
           '<th>Name</th>'+
-          "<th>Father\'s Name</th>"+
+          "<th>Father\\'s Name</th>"+
           '<th>Status</th>'+
           '<th>Check-in Time</th>'+
           '</tr></thead><tbody>';
@@ -1687,6 +1690,49 @@ function printAttendance() {
   html += '</tbody></table>';
   html += '<script>window.addEventListener("afterprint", function(){ setTimeout(function(){ window.close && window.close(); }, 0); });<\/script>';
   html += '</body></html>';
+
+  // Detect mobile/Android to prefer PDF generation for reliable full-table output
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const prefersPdf = !!window.html2pdf && isMobile;
+
+  if (prefersPdf) {
+    try {
+      // Build a temporary container with the same markup and styles (inside current document)
+      const temp = document.createElement('div');
+      temp.style.position = 'fixed';
+      temp.style.left = '-99999px';
+      temp.style.top = '0';
+      temp.style.width = '210mm';
+      temp.style.background = '#fff';
+      document.body.appendChild(temp);
+
+      // Only inject the body content of our html (simple extraction)
+      const bodyStart = html.indexOf('<body');
+      const bodyEnd = html.lastIndexOf('</body>');
+      const openTagEnd = html.indexOf('>', bodyStart) + 1;
+      const bodyInner = html.substring(openTagEnd, bodyEnd);
+      temp.innerHTML = bodyInner;
+
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `attendance_${new Date().toISOString().slice(0,10)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0, windowWidth: 1200 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css', 'legacy'] }
+      };
+
+      // Generate and prompt download/print via native viewer
+      window.html2pdf().set(opt).from(temp).save().then(() => {
+        document.body.removeChild(temp);
+      }).catch(() => {
+        try { document.body.removeChild(temp); } catch (_) {}
+      });
+      return;
+    } catch (_) {
+      // Fall back to iframe print below
+    }
+  }
 
   // Android-safe print via hidden iframe
   const iframe = document.createElement('iframe');
