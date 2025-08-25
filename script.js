@@ -27,6 +27,9 @@ let attendanceTime = {};
 let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
+// Dynamic data loaded from Firestore
+let students = [];
+let timetable = {};
 
 // NOTE: handlePageDisplay is defined later in the file with enhanced logic.
 // Keeping a single implementation to avoid conflicts.
@@ -68,6 +71,13 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Initialize Firebase in the background
   initializeFirebase()
+    .then(() => {
+      // Load dynamic data
+      return Promise.all([
+        loadStudentsFromFirestore(),
+        loadTimetableFromFirestore()
+      ]);
+    })
     .then(() => {
       // Set up auth state listener
       return new Promise((resolve) => {
@@ -179,42 +189,7 @@ const UNIVERSITY_LAT = 31.635428012027894;  // GNDU latitude
 const UNIVERSITY_LNG = 74.82433444456309;  // GNDU longitude
 const ALLOWED_RADIUS_METERS = 150;  // 150 meters radius
 
-// Timetable data
-const timetable = {
-  'Monday': {
-    '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-    '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
-    '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
-    '12:00-12:55': { 'CEL1020': 'Sahil Sharma' },
-    '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
-    '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
-  },
-  'Tuesday': {
-    '09:00-09:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-    '10:00-10:55': { 'PHL1083': 'Dr. Vaishali' },
-    '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
-    '12:00-12:55': { 'CEL1020': 'Sahil Sharma' }
-  },
-  'Wednesday': {
-    '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-    '10:00-10:55': { 'PBL1021': 'Mr. Saraj' },
-    '11:00-11:55': { 'PHL1083': 'Dr. Vaishali' },
-    '02:00-02:55': { 'CEL1020': 'Sahil Sharma' },
-    '03:00-03:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-    '04:00-04:55': { 'MTL1001': 'Dr. Ramandeep Kaur' }
-  },
-  'Thursday': {
-    '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-    '10:00-10:55': { 'MTL1001': 'Dr. Ramandeep Kaur' },
-    '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' }
-  },
-  'Friday': {
-    '09:00-09:55': { 'MEL1021': 'Er. Satnam Singh' },
-    '10:00-10:55': { 'CEL1020': 'Sahil Sharma' },
-    '11:00-11:55': { 'MEL1021': 'Er. Satnam Singh' },
-    '03:00-03:55': { 'PBL1022': 'Dr. Kanwaljit Kaur', 'HSL4000': 'NTB' }
-  }
-};
+// Timetable is now loaded from Firestore at runtime
 
 const subjectNames = {
   'CEL1020': 'Engineering Mechanics',
@@ -671,6 +646,42 @@ function clearElement(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
+// Firestore loaders
+async function loadStudentsFromFirestore() {
+  try {
+    if (!db) return [];
+    const snapshot = await db.collection('students').get();
+    students = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Normalize fields expected by UI
+    students = students.map(s => ({
+      id: String(s.id || s.studentId || ''),
+      name: s.name || s.fullName || '',
+      father: s.father || s.fatherName || '',
+      class_group_no: s.class_group_no || s.classGroup || '',
+      lab_group_no: s.lab_group_no || s.labGroup || ''
+    }));
+    console.log('Loaded students from Firestore:', students.length);
+    return students;
+  } catch (e) {
+    console.error('Failed to load students:', e);
+    return [];
+  }
+}
+
+async function loadTimetableFromFirestore() {
+  try {
+    if (!db) { timetable = {}; return {}; }
+    const doc = await db.collection('config').doc('timetable').get();
+    timetable = doc.exists ? (doc.data() || {}) : {};
+    console.log('Loaded timetable from Firestore:', Object.keys(timetable).length, 'days');
+    return timetable;
+  } catch (e) {
+    console.error('Failed to load timetable:', e);
+    timetable = {};
+    return {};
+  }
+}
+
 function setMessage(el, type, text) {
   if (!el) return;
   clearElement(el);
@@ -683,12 +694,12 @@ function setMessage(el, type, text) {
 function checkStudentsLoaded() {
   const loadingMsg = document.getElementById('loadingMessage');
   
-  if (typeof students !== 'undefined' && Array.isArray(students) && students.length > 0) {
+  if (Array.isArray(students) && students.length > 0) {
     loadingMsg.style.display = 'none';
     console.log(`✅ Students loaded successfully: ${students.length} students found`);
     return true;
   } else {
-    loadingMsg.innerHTML = '❌ Error: students.js file not found or empty. Please check the file path and content.';
+    loadingMsg.innerHTML = '❌ Error: No students found in database. Please add students in Firestore.';
     loadingMsg.style.background = '#f8d7da';
     loadingMsg.style.color = '#721c24';
     console.error('❌ Students data not loaded');
