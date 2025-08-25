@@ -1,6 +1,10 @@
 // Firebase Configuration (provided by env.js at runtime)
 // For static sites, .env files are not available to the browser. We load
 // configuration from a non-committed env.js file instead. See env.example.js.
+
+// script.js (uses Firebase v9 compat via CDN included in index.html)
+
+
 const firebaseConfig = (window.__ENV && window.__ENV.firebaseConfig) ? window.__ENV.firebaseConfig : {
   apiKey: "",
   authDomain: "",
