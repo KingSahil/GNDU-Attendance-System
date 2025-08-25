@@ -43,7 +43,7 @@ const students = [
   { id: "2025010011756", name: "PRANAV JOSHI", father: "PARVEEN KUMAR", class_group_no: "G1", lab_group_no: "G2" },
   { id: "2025010002521", name: "PRINCE KUMAR", father: "TUNTUN KUMAR", class_group_no: "G1", lab_group_no: "G2" },
   { id: "2025010012252", name: "PRITIKA", father: "JOGINDER PAL", class_group_no: "G1", lab_group_no: "G2" },
-  { id: "2025010006991", name: "PRIYANSH", father: "KAMAL SINGH", class_group_no: "G1", lab_group_no: "G2" },
+  { id: "2025010006991", name: "PRIYANSHI", father: "KAMAL SINGH", class_group_no: "G1", lab_group_no: "G2" },
   { id: "2025010000782", name: "RAGHAV SHARMA", father: "MANOJ KUMAR SHARMA", class_group_no: "G1", lab_group_no: "G2" },
   { id: "2025010009086", name: "RAGHUNANDAN", father: "VISHAL KASHYAP", class_group_no: "G1", lab_group_no: "G2" },
   { id: "2025010001824", name: "RAHUL SHARMA", father: "RAMESH KUMAR SHARMA", class_group_no: "G1", lab_group_no: "G2" },
