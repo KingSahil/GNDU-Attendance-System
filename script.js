@@ -27,6 +27,8 @@ let attendanceTime = {};
 let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
+// Global students array (now loaded from Firestore)
+let students = [];
 
 // NOTE: handlePageDisplay is defined later in the file with enhanced logic.
 // Keeping a single implementation to avoid conflicts.
@@ -94,6 +96,10 @@ document.addEventListener('DOMContentLoaded', function() {
           resolve(user);
         });
       });
+    })
+    .then(() => {
+      // Load students from Firestore once Firebase/auth are ready
+      return loadStudentsFromFirestore();
     })
     .catch(error => {
       console.error('Initialization error:', error);
@@ -172,6 +178,35 @@ function initializeFirebase() {
       reject(error);
     }
   });
+}
+
+// Load students from Firestore (one-time fetch)
+async function loadStudentsFromFirestore() {
+  try {
+    if (!db) {
+      console.warn('Firestore not initialized yet');
+      return;
+    }
+    const snapshot = await db.collection('students').orderBy('name').get();
+    students = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: data.id,
+        name: data.name,
+        father: data.father,
+        class_group_no: data.class_group_no,
+        lab_group_no: data.lab_group_no
+      };
+    });
+    console.log(`✅ Loaded ${students.length} students from Firestore`);
+    const loadingMsg = document.getElementById('loadingMessage');
+    if (loadingMsg) loadingMsg.style.display = 'none';
+    // Revalidate the form to enable Start button if needed
+    if (document.getElementById('startBtn')) validateForm();
+  } catch (e) {
+    console.error('Failed to load students from Firestore:', e);
+    updateFirebaseStatus('🔴 Failed to load students from Firestore', 'error');
+  }
 }
 
 // Location checking variables - GNDU coordinates
@@ -683,15 +718,16 @@ function setMessage(el, type, text) {
 function checkStudentsLoaded() {
   const loadingMsg = document.getElementById('loadingMessage');
   
-  if (typeof students !== 'undefined' && Array.isArray(students) && students.length > 0) {
-    loadingMsg.style.display = 'none';
-    console.log(`✅ Students loaded successfully: ${students.length} students found`);
+  if (Array.isArray(students) && students.length > 0) {
+    if (loadingMsg) loadingMsg.style.display = 'none';
+    console.log(`✅ Students loaded from Firestore: ${students.length}`);
     return true;
   } else {
-    loadingMsg.innerHTML = '❌ Error: students.js file not found or empty. Please check the file path and content.';
-    loadingMsg.style.background = '#f8d7da';
-    loadingMsg.style.color = '#721c24';
-    console.error('❌ Students data not loaded');
+    if (loadingMsg) {
+      loadingMsg.innerHTML = '⏳ Loading students from Firestore...';
+      loadingMsg.style.background = '#fff3cd';
+      loadingMsg.style.color = '#856404';
+    }
     return false;
   }
 }
