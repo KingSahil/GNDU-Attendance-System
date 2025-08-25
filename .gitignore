@@ -1,0 +1,9 @@
+# Local environment files (do not commit)
+env.js
+env.*.js
+.env
+.env.*
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log

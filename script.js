@@ -1,12 +1,14 @@
-// Firebase Configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
-  authDomain: "gndu-attendance-system.firebaseapp.com",
-  projectId: "gndu-attendance-system",
-  storageBucket: "gndu-attendance-system.appspot.com",
-  messagingSenderId: "874240831454",
-  appId: "1:874240831454:web:5358a9e3016b9df1e0f74f",
-  measurementId: "G-0XCLY4F1YH"
+// Firebase Configuration (provided by env.js at runtime)
+// For static sites, .env files are not available to the browser. We load
+// configuration from a non-committed env.js file instead. See env.example.js.
+const firebaseConfig = (window.__ENV && window.__ENV.firebaseConfig) ? window.__ENV.firebaseConfig : {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+  measurementId: ""
 };
 
 // Initialize Firebase
@@ -27,7 +29,7 @@ let checkinUrl = '';
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('🚀 GNDU Attendance System starting...');
+  // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
   
   // Check for session in URL first
   const urlParams = new URLSearchParams(window.location.search);
@@ -110,6 +112,14 @@ let statusSortMode = null;
 function initializeFirebase() {
   return new Promise((resolve, reject) => {
     try {
+      // Validate Firebase configuration before initializing
+      const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
+      const missing = requiredKeys.filter(k => !firebaseConfig || !firebaseConfig[k]);
+      if (missing.length) {
+        console.error('Missing Firebase config keys:', missing);
+        updateFirebaseStatus('🔴 Firebase config is missing. Please configure env.js', 'error');
+        return reject(new Error('Missing Firebase config: ' + missing.join(', ')));
+      }
       // Initialize Firebase
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
@@ -229,9 +239,7 @@ window.handleLogin = async function() {
   const loginBtn = document.getElementById('loginBtn');
 
   if (!email || !password) {
-    if (messageDiv) {
-      messageDiv.innerHTML = '<div class="error-message">Please enter both email and password</div>';
-    }
+    if (messageDiv) { setMessage(messageDiv, 'error', 'Please enter both email and password'); }
     return;
   }
 
@@ -240,9 +248,7 @@ window.handleLogin = async function() {
     loginBtn.textContent = 'Signing in...';
   }
   
-  if (messageDiv) {
-    messageDiv.innerHTML = '';
-  }
+  if (messageDiv) { clearElement(messageDiv); }
 
   try {
     console.log('Attempting to sign in with email:', email);
@@ -252,9 +258,7 @@ window.handleLogin = async function() {
     
     console.log('Login successful for user:', user.email);
     
-    if (messageDiv) {
-      messageDiv.innerHTML = '<div class="success-message">✅ Login successful! Redirecting...</div>';
-    }
+    if (messageDiv) { setMessage(messageDiv, 'success', '✅ Login successful! Redirecting...'); }
     
     // Show dashboard after successful login
     showDashboard();
@@ -284,7 +288,7 @@ window.handleLogin = async function() {
         break;
     }
     
-    messageDiv.innerHTML = `<div class="error-message">❌ ${errorMessage}</div>`;
+    setMessage(messageDiv, 'error', `❌ ${errorMessage}`);
     loginBtn.disabled = false;
     loginBtn.textContent = 'Login';
   }
@@ -657,6 +661,21 @@ function updateFirebaseStatus(message, status) {
   }
 }
 
+// Safe DOM helpers
+function clearElement(el) {
+  if (!el) return;
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function setMessage(el, type, text) {
+  if (!el) return;
+  clearElement(el);
+  const wrapper = document.createElement('div');
+  wrapper.className = `${type}-message`;
+  wrapper.textContent = text;
+  el.appendChild(wrapper);
+}
+
 function checkStudentsLoaded() {
   const loadingMsg = document.getElementById('loadingMessage');
   
@@ -734,7 +753,14 @@ async function handleSessionPrefill() {
 }
 
 function generateSessionId() {
-  return 'ATT_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  // Crypto-strong 128-bit random id in hex
+  const bytes = new Uint8Array(16);
+  (window.crypto || window.msCrypto).getRandomValues(bytes);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return 'ATT_' + hex;
 }
 
 function findTeacherAndTime(date, subjectCode) {
@@ -1503,24 +1529,21 @@ function renderTable() {
   const tbody = document.getElementById("studentTable");
   const filteredStudents = applyFilters();
 
-  tbody.innerHTML = "";
+  clearElement(tbody);
   filteredStudents.forEach((student, index) => {
     const row = document.createElement("tr");
     if (attendance[student.id]) row.classList.add("present");
-    
-    row.innerHTML = `
-      <td>${getRollNumberById(student.id)}</td>
-      <td>${student.id}</td>
-      <td>${student.name}</td>
-      <td>${student.father}</td>
-      <td>
-        ${attendance[student.id] ? 
-          '<span class="status-present">Present</span>' : 
-          '<span class="status-absent">Absent</span>'
-        }
-      </td>
-      <td>${attendanceTime[student.id] || '-'}</td>
-    `;
+    const td1 = document.createElement('td'); td1.textContent = String(getRollNumberById(student.id));
+    const td2 = document.createElement('td'); td2.textContent = String(student.id);
+    const td3 = document.createElement('td'); td3.textContent = String(student.name || '');
+    const td4 = document.createElement('td'); td4.textContent = String(student.father || '');
+    const td5 = document.createElement('td');
+    const statusSpan = document.createElement('span');
+    if (attendance[student.id]) { statusSpan.className = 'status-present'; statusSpan.textContent = 'Present'; }
+    else { statusSpan.className = 'status-absent'; statusSpan.textContent = 'Absent'; }
+    td5.appendChild(statusSpan);
+    const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
+    row.appendChild(td1); row.appendChild(td2); row.appendChild(td3); row.appendChild(td4); row.appendChild(td5); row.appendChild(td6);
     tbody.appendChild(row);
   });
 
@@ -1968,7 +1991,7 @@ async function updateSessionFromFirestore(sessionParam) {
 function showError(message) {
   const messageDiv = document.getElementById('checkinMessage');
   if (messageDiv) {
-    messageDiv.innerHTML = `<div class="error-message" style="animation: shake 0.5s;">❌ ${message}</div>`;
+    setMessage(messageDiv, 'error', `❌ ${message}`);
     // Scroll to the error message
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
     
@@ -2020,11 +2043,16 @@ async function displayStudentCheckin(session) {
   // Update session info
   const classInfo = document.getElementById('checkinClassInfo');
   if (classInfo) {
-    classInfo.innerHTML = `
-      <h3>${session.subjectName || 'No Subject'}</h3>
-      <p>📅 ${session.date || 'No date'} • ⏰ ${session.timeSlot || 'No time slot'}</p>
-      <p>👨‍🏫 ${session.teacherName || 'Teacher'}</p>
-    `;
+    clearElement(classInfo);
+    const h3 = document.createElement('h3');
+    h3.textContent = session.subjectName || 'No Subject';
+    const p1 = document.createElement('p');
+    p1.textContent = `📅 ${session.date || 'No date'} • ⏰ ${session.timeSlot || 'No time slot'}`;
+    const p2 = document.createElement('p');
+    p2.textContent = `👨‍🏫 ${session.teacherName || 'Teacher'}`;
+    classInfo.appendChild(h3);
+    classInfo.appendChild(p1);
+    classInfo.appendChild(p2);
   }
   
   // Initialize form elements
@@ -2076,10 +2104,7 @@ async function displayStudentCheckin(session) {
   } catch (error) {
     console.error('Error during location check:', error);
     if (messageDiv) {
-      messageDiv.innerHTML = `
-        <div class="error-message">
-          Error checking location. Please ensure location services are enabled and refresh the page.
-        </div>`;
+      setMessage(messageDiv, 'error', 'Error checking location. Please ensure location services are enabled and refresh the page.');
     }
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -2106,7 +2131,7 @@ async function submitAttendance() {
   const messageDiv = document.getElementById('checkinMessage');
 
   function showError(msg) {
-    if (messageDiv) messageDiv.innerHTML = `<div class="error-message">${msg}</div>`;
+    if (messageDiv) setMessage(messageDiv, 'error', msg);
   }
   function normalizeName(n) {
     return (n || '').toString().trim().replace(/\s+/g, ' ').toUpperCase();
@@ -2230,9 +2255,7 @@ async function submitAttendance() {
     }
 
     // Update UI to show submission in progress
-    if (messageDiv) {
-      messageDiv.innerHTML = '<div class="info-message">Submitting your attendance, please wait...</div>';
-    }
+    if (messageDiv) { setMessage(messageDiv, 'info', 'Submitting your attendance, please wait...'); }
 
     try {
       // Save to Firestore
@@ -2253,13 +2276,7 @@ async function submitAttendance() {
       localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
       
       // Show success message
-      if (messageDiv) {
-        messageDiv.innerHTML = `
-          <div class="success-message">
-            ✅ <strong>Attendance recorded successfully!</strong><br>
-            ${student.name} (${student.id}) is marked present.
-          </div>`;
-      }
+      if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
       
       // Reset form and disable submit button
       if (form) form.reset();
@@ -2271,9 +2288,7 @@ async function submitAttendance() {
       // Auto-close after 5 seconds
       setTimeout(() => {
         const message = document.getElementById('checkinMessage');
-        if (message) {
-          message.innerHTML = '';
-        }
+        if (message) { clearElement(message); }
       }, 5000);
       
     } catch (error) {
@@ -2289,13 +2304,7 @@ async function submitAttendance() {
       };
       localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
       
-      if (messageDiv) {
-        messageDiv.innerHTML = `
-          <div class="warning-message">
-            ⚠️ <strong>Attendance saved offline</strong><br>
-            Your attendance has been saved locally and will sync when online.
-          </div>`;
-      }
+      if (messageDiv) { setMessage(messageDiv, 'warning', '⚠️ Attendance saved offline. It will sync when online.'); }
       
       if (submitBtn) {
         submitBtn.disabled = true;
@@ -2316,13 +2325,7 @@ async function submitAttendance() {
     }
   } catch (error) {
     console.error('Error in submitAttendance:', error);
-    if (messageDiv) {
-      messageDiv.innerHTML = `
-        <div class="error-message">
-          ❌ An error occurred while processing your request. Please try again later.
-          ${error.message ? `<br><small>${error.message}</small>` : ''}
-        </div>`;
-    }
+    if (messageDiv) { setMessage(messageDiv, 'error', `❌ An error occurred while processing your request. Please try again later. ${error.message ? error.message : ''}`); }
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Try Again';
@@ -2337,8 +2340,4 @@ async function submitAttendance() {
   window.shareWhatsApp = shareWhatsApp;
   window.handleLogout = handleLogout;
 
-  // Initialize the app when the script loads
-  initializeFirebase().catch(error => {
-    console.error('Failed to initialize Firebase:', error);
-    updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
-  });
+  // Note: Firebase initialization is triggered once from the main DOMContentLoaded
