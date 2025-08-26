@@ -1002,6 +1002,7 @@ tbody tr:nth-child(even) {
 
 /* Modal Overlay */
 .modal-overlay {
+  
   position: fixed;
   top: 0;
   left: 0;
@@ -1046,8 +1047,8 @@ body.modal-open {
 
 /* Student Details View */
 .student-card {
-  width: 90%; /* Use percentage for better responsiveness */
-  max-width: 1400px; /* Cap maximum width on large screens */
+  width: 80%; /* Narrower width to match table size */
+  max-width: 900px; /* Reduced maximum width */
   margin: 40px auto;
   background: var(--card-bg);
   border-radius: 12px;
@@ -1067,14 +1068,14 @@ body.modal-open #studentCheckin {
 
 @media (max-width: 768px) {
   .student-card {
-    width: 95%; /* Slightly wider on tablet/mobile for better content display */
+    width: 90%; /* Slightly wider on tablet/mobile for better content display */
     margin: 20px auto;
   }
 }
 
 @media (max-width: 480px) {
   .student-card {
-    width: 98%; /* Almost full width on small mobile screens */
+    width: 95%; /* Almost full width on small mobile screens */
     margin: 10px auto;
   }
 }
