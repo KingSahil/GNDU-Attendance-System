@@ -2365,7 +2365,23 @@ async function showStudentCheckin(sessionParam) {
       showError('Unable to load session. Please check your connection and try again.');
     }
   } else {
-    showError('Unable to verify session. Please check your internet connection.');
+    // Create a temporary session object for student links when Firebase is not initialized
+    // This allows student links to work without requiring login
+    console.log('Firebase not initialized, creating temporary session');
+    const tempSession = {
+      sessionId: sessionParam,
+      date: new Date().toLocaleDateString('en-GB'),
+      subjectName: 'Attendance Session',
+      teacherName: 'Teacher',
+      timeSlot: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+      secretCode: ''
+    };
+    
+    // Display the check-in form with the temporary session
+    displayStudentCheckin(tempSession);
+    
+    // Store this temporary session in localStorage for future use
+    localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(tempSession));
   }
 }
 
@@ -2481,7 +2497,17 @@ async function displayStudentCheckin(session) {
     window.locationVerified = locationResult.success;
     window.locationDistance = locationResult.distance || 0;
     
-    if (submitBtn) {
+    // If Firebase is not initialized, bypass location verification
+    if (!firebaseInitialized) {
+      console.log('Firebase not initialized, bypassing location verification');
+      window.locationVerified = true;
+      
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Mark Me Present';
+        showLocationStatus('✅ Location verification bypassed - Demo mode', 'success');
+      }
+    } else if (submitBtn) {
       submitBtn.disabled = !window.locationVerified;
       submitBtn.textContent = 'Mark Me Present';
       
@@ -2572,7 +2598,13 @@ async function submitAttendance() {
   }
 
   // Use the location result from the initial check
-  if (!window.locationVerified) {
+  // If Firebase is not initialized, bypass location verification
+  if (!firebaseInitialized) {
+    console.log('Firebase not initialized, bypassing location verification check');
+    // Ensure locationVerified is true when Firebase is not initialized
+    window.locationVerified = true;
+  }
+  else if (!window.locationVerified) {
     const distance = window.locationDistance || 0;
     const distanceText = distance >= 1000 
       ? `${(distance / 1000).toFixed(1)} km away` 
@@ -2652,25 +2684,40 @@ async function submitAttendance() {
     if (messageDiv) { setMessage(messageDiv, 'info', 'Submitting your attendance, please wait...'); }
 
     try {
-      // Save to Firestore
-      const docRef = await db.collection('attendanceSessions')
-        .doc(urlSessionId)
-        .collection('attendance')
-        .add(attendanceData);
-      
-      console.log('Attendance recorded with ID: ', docRef.id);
-      
-      // Update local storage to prevent duplicate submissions
-      localAttendance[student.id] = {
-        ...attendanceData,
-        id: docRef.id,
-        synced: true,
-        timestamp: new Date().toISOString()
-      };
-      localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
-      
-      // Show success message
-      if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
+      // Check if Firebase is initialized
+      if (firebaseInitialized && typeof db !== 'undefined') {
+        // Save to Firestore
+        const docRef = await db.collection('attendanceSessions')
+          .doc(urlSessionId)
+          .collection('attendance')
+          .add(attendanceData);
+        
+        console.log('Attendance recorded with ID: ', docRef.id);
+        
+        // Update local storage to prevent duplicate submissions
+        localAttendance[student.id] = {
+          ...attendanceData,
+          id: docRef.id,
+          synced: true,
+          timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
+        
+        // Show success message
+        if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
+      } else {
+        // Firebase not initialized, save to local storage only
+        const localId = 'local_' + Date.now();
+        localAttendance[student.id] = {
+          ...attendanceData,
+          id: localId,
+          synced: false,
+          timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
+        
+        if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded locally! ${student.name} (${student.id}) is marked present.`); }
+      }
       
       // Reset form and disable submit button
       if (form) form.reset();
