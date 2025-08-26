@@ -1010,11 +1010,16 @@ tbody tr:nth-child(even) {
   background: rgba(0, 0, 0, 0.7);
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start; /* Align to top for better scrolling experience */
   z-index: 1000;
   padding: 20px;
   overflow-y: auto;
   backdrop-filter: blur(4px); /* blur background behind overlay if supported */
+}
+
+/* Disable body scrolling when modal is open */
+body.modal-open {
+  overflow: hidden;
 }
 
 .close-btn {
@@ -1041,7 +1046,8 @@ tbody tr:nth-child(even) {
 
 /* Student Details View */
 .student-card {
-  max-width: 1100px; /* slightly wider on PC */
+  width: 90%; /* Use percentage for better responsiveness */
+  max-width: 1400px; /* Cap maximum width on large screens */
   margin: 40px auto;
   background: var(--card-bg);
   border-radius: 12px;
@@ -1061,15 +1067,22 @@ body.modal-open #studentCheckin {
 
 @media (max-width: 768px) {
   .student-card {
-    max-width: 95vw; /* stay responsive on mobile/tablet */
+    width: 95%; /* Slightly wider on tablet/mobile for better content display */
     margin: 20px auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .student-card {
+    width: 98%; /* Almost full width on small mobile screens */
+    margin: 10px auto;
   }
 }
 
 .student-header {
   background: var(--header-gradient);
   color: #fff;
-  padding: 24px;
+  padding: 28px 32px;
   position: relative; /* Anchor close button to header */
 }
 
@@ -1095,7 +1108,15 @@ body.modal-open #studentCheckin {
 
 .student-header h2 { margin-top: 8px; font-weight: 400; }
 
-.student-body { padding: 24px; }
+.student-body { padding: 32px; }
+
+@media (max-width: 768px) {
+  .student-body { padding: 24px; }
+}
+
+@media (max-width: 480px) {
+  .student-body { padding: 16px; }
+}
 
 .student-body .meta { 
   display: grid; 
