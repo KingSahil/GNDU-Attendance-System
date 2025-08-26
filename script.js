@@ -37,9 +37,10 @@ let students = [];
 document.addEventListener('DOMContentLoaded', function() {
   // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
   
-  // Check for session in URL first
+  // Check for session or student view in URL first
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
+  const view = urlParams.get('view');
 
   if (sessionId) {
     // If there's a session ID, show check-in page immediately
@@ -52,6 +53,17 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'block';
     showStudentCheckin(sessionId);
+  } else if (view === 'student') {
+    // Show consolidated student details page
+    console.log('Student details view requested');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'none';
+    document.getElementById('studentDetails').style.display = 'block';
+    loadStudentDetailsPage().catch(err => {
+      console.error(err);
+      showErrorInline('Failed to load student attendance. See console for details.');
+    });
   } else {
     // Otherwise, optimistically show dashboard instantly if we have a cached user
     // to avoid login screen flicker while Firebase initializes. Auth listener will
@@ -110,6 +122,13 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('teacherDashboard').style.display = 'none';
         document.getElementById('studentCheckin').style.display = 'block';
         showStudentCheckin(sessionId);
+      } else if (view === 'student') {
+        // Ensure the student details view is visible even if Firebase init failed
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('teacherDashboard').style.display = 'none';
+        document.getElementById('studentCheckin').style.display = 'none';
+        document.getElementById('studentDetails').style.display = 'block';
+        loadStudentDetailsPage().catch(() => {});
       }
     });
 });
@@ -384,6 +403,8 @@ function showLoginScreen() {
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'none';
+    const sd = document.getElementById('studentDetails');
+    if (sd) sd.style.display = 'none';
     document.body.classList.remove('dashboard-view', 'student-checkin-page');
     document.body.classList.add('login-view');
   }
@@ -398,6 +419,8 @@ function showDashboard() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'block';
     document.getElementById('studentCheckin').style.display = 'none';
+    const sd = document.getElementById('studentDetails');
+    if (sd) sd.style.display = 'none';
     document.body.classList.remove('login-view', 'student-checkin-page');
     document.body.classList.add('dashboard-view');
     
@@ -413,11 +436,23 @@ function handlePageDisplay(user) {
   // This function is called on auth state changes
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
+  const view = urlParams.get('view');
   
   // If we're on a student check-in page, show it regardless of auth state
   if (sessionId) {
     console.log('Auth state changed, showing student check-in page for session:', sessionId);
     showStudentCheckin(sessionId);
+    return;
+  }
+  // If student details view is requested
+  if (view === 'student') {
+    console.log('Auth state changed, showing student details view');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'none';
+    document.getElementById('studentDetails').style.display = 'block';
+    // Fire and forget, Firebase may not be ready yet
+    loadStudentDetailsPage().catch(() => {});
     return;
   }
   
@@ -431,6 +466,247 @@ function handlePageDisplay(user) {
   }
 }
 
+
+// ---------------- Student Details (Consolidated) ----------------
+function getQueryParam(name) {
+  const url = new URL(window.location.href);
+  return url.searchParams.get(name);
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function showErrorInline(msg) {
+  const box = document.getElementById('errorBox');
+  if (box) {
+    box.style.display = 'block';
+    box.textContent = msg;
+  }
+}
+
+function pct(n, d) {
+  if (!d) return '0%';
+  const v = Math.round((n / d) * 100);
+  return v + '%';
+}
+
+function pctClass(n, d) {
+  const v = d ? (n / d) : 0;
+  if (v >= 0.75) return 'pill green';
+  if (v >= 0.5) return 'pill orange';
+  return 'pill red';
+}
+
+async function fetchAllSessionsForDetails() {
+  if (!db) throw new Error('Firestore not initialized');
+  const snap = await db.collection('attendanceSessions').orderBy('date', 'asc').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function fetchAllAttendanceDocsForStudent(studentId) {
+  const qSnap = await db.collectionGroup('attendance').where('studentId', '==', String(studentId)).get();
+  return qSnap.docs.map(d => ({ id: d.id, ...d.data(), _path: d.ref.path }));
+}
+
+async function fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions) {
+  try {
+    return await fetchAllAttendanceDocsForStudent(studentId);
+  } catch (e) {
+    if (e && (e.code === 'failed-precondition' || String(e.message || '').includes('COLLECTION_GROUP'))) {
+      console.warn('collectionGroup index missing; using per-session fallback');
+      const results = [];
+      const chunkSize = 10;
+      for (let i = 0; i < sessions.length; i += chunkSize) {
+        const chunk = sessions.slice(i, i + chunkSize);
+        const promises = chunk.map(async (s) => {
+          try {
+            const qs = await db
+              .collection('attendanceSessions')
+              .doc(s.id)
+              .collection('attendance')
+              .where('studentId', '==', String(studentId))
+              .limit(1)
+              .get();
+            if (!qs.empty) {
+              const d = qs.docs[0];
+              return { id: d.id, ...d.data(), _path: d.ref.path };
+            }
+          } catch (err) {
+            console.warn('Fallback query failed for session', s.id, err);
+          }
+          return null;
+        });
+        const chunkRes = await Promise.all(promises);
+        chunkRes.forEach((r) => { if (r) results.push(r); });
+      }
+      return results;
+    }
+    throw e;
+  }
+}
+
+async function loadStudentDetailsPage() {
+  try {
+    const studentId = getQueryParam('id');
+    if (!studentId) {
+      showErrorInline('Missing student id in URL.');
+      return;
+    }
+    setText('metaId', studentId);
+    setText('studentDetailsName', 'Loading...');
+
+    // Wait for auth and students to load
+    try {
+      await new Promise(resolve => {
+        let settled = false;
+        if (auth) {
+          auth.onAuthStateChanged(async () => { 
+            if (!settled) { 
+              settled = true;
+              // Load students if not already loaded
+              if (students.length === 0) {
+                await loadStudentsFromFirestore();
+              }
+              resolve(); 
+            } 
+          });
+          setTimeout(() => { 
+            if (!settled) { 
+              settled = true; 
+              resolve(); 
+            } 
+          }, 1500);
+        } else { 
+          resolve(); 
+        }
+      });
+    } catch (e) {
+      console.error('Error during auth/student load:', e);
+    }
+
+    const sessions = await fetchAllSessionsForDetails();
+    if (!sessions.length) {
+      showErrorInline('No attendance sessions found.');
+      return;
+    }
+    const attendanceDocs = await fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions);
+
+    const sessionById = new Map(sessions.map(s => [s.sessionId || s.id, s]));
+    const perSubject = new Map(); // key by subjectName or subjectCode
+    const totalSessions = sessions.length;
+    let totalPresent = 0;
+    let studentName = null;
+    let fatherName = null;
+
+    for (const att of attendanceDocs) {
+      const sid = att.sessionId || att.session || att._sessionId;
+      const session = sessionById.get(sid);
+      const subjName = att.subjectName || (session && (session.subjectName || session.subject)) || (att.subjectCode || 'General');
+      const key = subjName;
+      const entry = perSubject.get(key) || { total: 0, present: 0 };
+      entry.present += 1; // presence indicated by doc existence
+      perSubject.set(key, entry);
+      totalPresent += 1;
+      if (!studentName && (att.name || att.studentName)) studentName = att.name || att.studentName;
+      if (!fatherName && (att.father || att.fatherName)) fatherName = att.father || att.fatherName;
+    }
+
+    // Compute total sessions per subject across sessions
+    const subjectSessionCounts = new Map();
+    for (const s of sessions) {
+      const subj = s.subjectName || s.subject || s.subjectCode || 'General';
+      subjectSessionCounts.set(subj, (subjectSessionCounts.get(subj) || 0) + 1);
+    }
+    for (const [subject, total] of subjectSessionCounts.entries()) {
+      const entry = perSubject.get(subject) || { total: 0, present: 0 };
+      entry.total = total;
+      perSubject.set(subject, entry);
+    }
+
+    // Debug log student data
+    console.log('Students array length:', students?.length || 0);
+    console.log('Looking for student ID:', studentId, 'Type:', typeof studentId);
+    console.log('Student name from attendance:', studentName);
+    
+    // If missing from attendance docs, try students cache with different ID formats
+    if (!studentName || !fatherName) {
+      // Try different ID formats to handle potential type mismatches
+      const possibleIdFormats = [
+        studentId, // original
+        String(studentId), // string version
+        Number(studentId), // number version
+        studentId.trim(), // trimmed string
+        studentId.padStart(2, '0') // handle leading zeros if any
+      ];
+      
+      let foundStudent = null;
+      
+      if (Array.isArray(students)) {
+        // Try each ID format until we find a match
+        for (const idFormat of possibleIdFormats) {
+          foundStudent = students.find(x => 
+            x && (
+              x.id === idFormat || 
+              String(x.id) === String(idFormat) ||
+              Number(x.id) === Number(idFormat)
+            )
+          );
+          if (foundStudent) break;
+        }
+      }
+      
+      console.log('Found student in cache:', foundStudent);
+      if (foundStudent) {
+        if (!studentName && foundStudent.name) {
+          studentName = foundStudent.name;
+          console.log('Using name from cache:', studentName);
+        }
+        if (!fatherName && foundStudent.father) {
+          fatherName = foundStudent.father;
+          console.log('Using father name from cache:', fatherName);
+        }
+      } else {
+        console.log('No student found in cache with ID formats:', possibleIdFormats);
+      }
+    }
+
+    // Fallback to student ID if name not found
+    console.log('Final student name:', studentName);
+    const displayName = studentName || `Student ${studentId}`;
+    
+    // Update the student name in the UI
+    setText('studentDetailsName', displayName);
+    document.title = `Attendance - ${displayName}`; // Update page title
+    setText('metaFather', fatherName || '-');
+    setText('overall', pct(totalPresent, totalSessions));
+    setText('totalSessions', String(totalSessions));
+
+    const list = document.getElementById('subjectList');
+    if (list) {
+      list.innerHTML = '';
+      const subjectsSorted = Array.from(perSubject.entries()).sort((a,b) => String(a[0]).localeCompare(String(b[0])));
+      for (const [subject, agg] of subjectsSorted) {
+        const div = document.createElement('div');
+        div.className = 'subject-item';
+        const left = document.createElement('div');
+        left.innerHTML = `<span class="subject-name">${subject}</span><br/><small>${agg.present}/${agg.total} present</small>`;
+        const right = document.createElement('div');
+        const pill = document.createElement('span');
+        pill.className = pctClass(agg.present, agg.total);
+        pill.textContent = pct(agg.present, agg.total);
+        right.appendChild(pill);
+        div.appendChild(left);
+        div.appendChild(right);
+        list.appendChild(div);
+      }
+    }
+  } catch (e) {
+    console.error(e);
+    showErrorInline('Failed to load student attendance. See console for details.');
+  }
+}
 
 // Location checking utilities
 function toRadians(degrees) {
@@ -1575,7 +1851,25 @@ function renderTable() {
     if (attendance[student.id]) row.classList.add("present");
     const td1 = document.createElement('td'); td1.textContent = String(getRollNumberById(student.id));
     const td2 = document.createElement('td'); td2.textContent = String(student.id);
-    const td3 = document.createElement('td'); td3.textContent = String(student.name || '');
+    const td3 = document.createElement('td');
+  // Make student name clickable to view detailed attendance page
+  const nameLink = document.createElement('a');
+  nameLink.href = `index.html?view=student&id=${encodeURIComponent(String(student.id))}`;
+  nameLink.textContent = String(student.name || '');
+  nameLink.className = 'student-link';
+  nameLink.title = 'View attendance details';
+  nameLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.location.href = nameLink.href;
+  });
+  td3.appendChild(nameLink);
+  // Make entire cell clickable for easier tapping
+  td3.style.cursor = 'pointer';
+  td3.addEventListener('click', (e) => {
+    // Avoid double-handling if anchor default fires
+    if (e.target && e.target.tagName === 'A') return;
+    window.location.href = nameLink.href;
+  });
     const td4 = document.createElement('td'); td4.textContent = String(student.father || '');
     const td5 = document.createElement('td');
     const statusSpan = document.createElement('span');
