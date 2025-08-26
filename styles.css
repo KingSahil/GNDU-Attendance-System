@@ -1000,9 +1000,48 @@ tbody tr:nth-child(even) {
   }
 }
 
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+  backdrop-filter: blur(4px); /* blur background behind overlay if supported */
+}
+
+.close-btn {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--text-color);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
 /* Student Details View */
 .student-card {
-  max-width: 900px;
+  max-width: 1100px; /* slightly wider on PC */
   margin: 40px auto;
   background: var(--card-bg);
   border-radius: 12px;
@@ -1011,10 +1050,27 @@ tbody tr:nth-child(even) {
   color: var(--text-color);
 }
 
+/* Optional fallback blur if backdrop-filter unsupported */
+body.modal-open #teacherDashboard,
+body.modal-open #loginScreen,
+body.modal-open #studentCheckin {
+  filter: blur(4px);
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 768px) {
+  .student-card {
+    max-width: 95vw; /* stay responsive on mobile/tablet */
+    margin: 20px auto;
+  }
+}
+
 .student-header {
   background: var(--header-gradient);
   color: #fff;
   padding: 24px;
+  position: relative; /* Anchor close button to header */
 }
 
 .student-header .back {
@@ -1022,6 +1078,19 @@ tbody tr:nth-child(even) {
   text-decoration: none;
   opacity: 0.9;
 }
+
+/* Close button styling inside header */
+.student-header .close-btn {
+  color: #fff; /* ensure visible on dark header */
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+
+.student-header .close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
 .student-header .back:hover { opacity: 1; text-decoration: underline; }
 
 .student-header h2 { margin-top: 8px; font-weight: 400; }

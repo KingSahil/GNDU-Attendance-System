@@ -54,16 +54,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('studentCheckin').style.display = 'block';
     showStudentCheckin(sessionId);
   } else if (view === 'student') {
-    // Show consolidated student details page
-    console.log('Student details view requested');
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('teacherDashboard').style.display = 'none';
-    document.getElementById('studentCheckin').style.display = 'none';
-    document.getElementById('studentDetails').style.display = 'block';
-    loadStudentDetailsPage().catch(err => {
-      console.error(err);
-      showErrorInline('Failed to load student attendance. See console for details.');
-    });
+    // On refresh with student details URL, go to homepage instead
+    console.log('Student details view on refresh: redirecting to dashboard/homepage');
+    // Strip query and show dashboard; modal can be opened via click only
+    if (window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    showDashboard();
   } else {
     // Otherwise, optimistically show dashboard instantly if we have a cached user
     // to avoid login screen flicker while Firebase initializes. Auth listener will
@@ -403,8 +400,9 @@ function showLoginScreen() {
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'none';
-    const sd = document.getElementById('studentDetails');
-    if (sd) sd.style.display = 'none';
+    const modal = document.getElementById('studentDetailsModal');
+    if (modal) modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
     document.body.classList.remove('dashboard-view', 'student-checkin-page');
     document.body.classList.add('login-view');
   }
@@ -419,8 +417,9 @@ function showDashboard() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'block';
     document.getElementById('studentCheckin').style.display = 'none';
-    const sd = document.getElementById('studentDetails');
-    if (sd) sd.style.display = 'none';
+    const modal = document.getElementById('studentDetailsModal');
+    if (modal) modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
     document.body.classList.remove('login-view', 'student-checkin-page');
     document.body.classList.add('dashboard-view');
     
@@ -444,15 +443,18 @@ function handlePageDisplay(user) {
     showStudentCheckin(sessionId);
     return;
   }
-  // If student details view is requested
+  // If student details view is requested (only open if already in modal-open state)
   if (view === 'student') {
-    console.log('Auth state changed, showing student details view');
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('teacherDashboard').style.display = 'none';
-    document.getElementById('studentCheckin').style.display = 'none';
-    document.getElementById('studentDetails').style.display = 'block';
-    // Fire and forget, Firebase may not be ready yet
-    loadStudentDetailsPage().catch(() => {});
+    if (document.body.classList.contains('modal-open')) {
+      console.log('Auth state changed, keeping student details modal open');
+      document.getElementById('studentDetailsModal').style.display = 'flex';
+      // Load student details
+      loadStudentDetailsPage().catch(() => {});
+    } else {
+      // Do not auto-open modal on refresh; go to dashboard instead
+      console.log('Auth state changed with student view on refresh, showing dashboard');
+      showDashboard();
+    }
     return;
   }
   
@@ -678,7 +680,7 @@ async function loadStudentDetailsPage() {
     
     // Update the student name in the UI
     setText('studentDetailsName', displayName);
-    document.title = `Attendance - ${displayName}`; // Update page title
+    // Don't change page title for modal view
     setText('metaFather', fatherName || '-');
     setText('overall', pct(totalPresent, totalSessions));
     setText('totalSessions', String(totalSessions));
@@ -1201,8 +1203,54 @@ function shareWhatsApp() {
 }
 
 // Event Listeners
+// Function to close the student details modal
+function closeStudentDetailsModal() {
+  const modal = document.getElementById('studentDetailsModal');
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+    // Remove view=student from URL without reload
+    if (window.history.replaceState) {
+      const base = window.location.pathname;
+      window.history.replaceState({}, document.title, base);
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   console.log('🚀 GNDU Attendance System starting...');
+
+  // Add click handler for close button
+  const closeBtn = document.getElementById('closeStudentDetails');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeStudentDetailsModal);
+  }
+  
+  // Close modal when clicking outside the card
+  const modal = document.getElementById('studentDetailsModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        closeStudentDetailsModal();
+      }
+    });
+  }
+
+  // Sync modal with back/forward navigation
+  window.addEventListener('popstate', function() {
+    const params = new URLSearchParams(window.location.search);
+    const isStudent = params.get('view') === 'student';
+    const id = params.get('id');
+    const modalEl = document.getElementById('studentDetailsModal');
+    if (!modalEl) return;
+    if (isStudent && id) {
+      modalEl.style.display = 'flex';
+      document.body.classList.add('modal-open');
+      loadStudentDetailsPage().catch(console.error);
+    } else {
+      closeStudentDetailsModal();
+    }
+  });
 
   // Only set up teacher dashboard elements if we're not on the student check-in page
   const urlParams = new URLSearchParams(window.location.search);
@@ -1852,15 +1900,26 @@ function renderTable() {
     const td1 = document.createElement('td'); td1.textContent = String(getRollNumberById(student.id));
     const td2 = document.createElement('td'); td2.textContent = String(student.id);
     const td3 = document.createElement('td');
-  // Make student name clickable to view detailed attendance page
+  // Make student name clickable to view detailed attendance in modal
   const nameLink = document.createElement('a');
-  nameLink.href = `index.html?view=student&id=${encodeURIComponent(String(student.id))}`;
+  // Keep the URL format as requested (?view=student&id=...)
+  nameLink.href = `${window.location.pathname}?view=student&id=${encodeURIComponent(String(student.id))}`;
   nameLink.textContent = String(student.name || '');
   nameLink.className = 'student-link';
   nameLink.title = 'View attendance details';
-  nameLink.addEventListener('click', (e) => {
+  nameLink.addEventListener('click', function(e) {
     e.preventDefault();
-    window.location.href = nameLink.href;
+    // Update URL without reloading the page (preserve requested format)
+    const newUrl = nameLink.href;
+    window.history.pushState({ path: newUrl }, '', newUrl);
+    
+    // Show the modal and load student details
+    const modal = document.getElementById('studentDetailsModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      document.body.classList.add('modal-open');
+      loadStudentDetailsPage().catch(console.error);
+    }
   });
   td3.appendChild(nameLink);
   // Make entire cell clickable for easier tapping
@@ -1868,7 +1927,8 @@ function renderTable() {
   td3.addEventListener('click', (e) => {
     // Avoid double-handling if anchor default fires
     if (e.target && e.target.tagName === 'A') return;
-    window.location.href = nameLink.href;
+    // Trigger the same behavior as clicking the name link
+    nameLink.click();
   });
     const td4 = document.createElement('td'); td4.textContent = String(student.father || '');
     const td5 = document.createElement('td');

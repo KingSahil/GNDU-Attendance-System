@@ -191,24 +191,24 @@
   <!-- Notification -->
   <div class="notification" id="notification"></div>
 
-  <!-- students.js removed: students are now loaded from Firestore -->
-  <!-- Consolidated Student Details View (hidden by default) -->
-  <div class="student-card" id="studentDetails" style="display: none;">
-    <div class="student-header">
-      <a class="back" id="backLink" href="index.html">← Back to Dashboard</a>
-      <h2>Student Attendance</h2>
-      <div id="studentDetailsName">Loading...</div>
-    </div>
-    <div class="student-body">
-      <div class="meta">
-        <div><strong>Student ID:</strong> <span id="metaId">-</span></div>
-        <div><strong>Father's Name:</strong> <span id="metaFather">-</span></div>
-        <div><strong>Overall %:</strong> <span id="overall">-</span></div>
-        <div><strong>Total Sessions:</strong> <span id="totalSessions">-</span></div>
+  <!-- Student Details Modal -->
+  <div class="modal-overlay" id="studentDetailsModal" style="display: none;">
+    <div class="student-card">
+      <div class="student-header">
+        <button class="close-btn" id="closeStudentDetails">×</button>
+        <h2>Student Attendance</h2>
+        <div id="studentDetailsName">Loading...</div>
       </div>
-      <div class="summary">Per-Subject Attendance</div>
-      <div class="subject-list" id="subjectList"></div>
-      <div id="errorBox" class="error-message" style="display:none"></div>
+      <div class="student-body">
+        <div class="meta">
+          <div><strong>Student ID:</strong> <span id="metaId">-</span></div>
+          <div><strong>Father's Name:</strong> <span id="metaFather">-</span></div>
+          <div><strong>Overall %:</strong> <span id="overall">-</span></div>
+          <div><strong>Total Sessions:</strong> <span id="totalSessions">-</span></div>
+        </div>
+        <div class="summary">Per-Subject Attendance</div>
+        <div class="subject-list" id="subjectList"></div>
+      </div>
     </div>
   </div>
 
