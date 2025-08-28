@@ -44,16 +44,28 @@ document.addEventListener('DOMContentLoaded', function() {
   const view = urlParams.get('view');
 
   if (sessionId) {
-    // If there's a session ID, show check-in page immediately
-    console.log('Found session ID, showing check-in page');
-    // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
-    // without assuming any auth state
-    // The canonical handlePageDisplay is defined later and will run after auth change
-    // events; here we just reflect the session view immediately.
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('teacherDashboard').style.display = 'none';
-    document.getElementById('studentCheckin').style.display = 'block';
-    showStudentCheckin(sessionId);
+    // If there's a session ID, check expiry immediately
+    console.log('Found session ID, checking expiry...');
+    
+    // Check local storage first for immediate expiry check
+    const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
+    if (cachedSession && isSessionExpired(cachedSession)) {
+      console.log('❌ Session is expired from cache, showing expiry message');
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentCheckin').style.display = 'block';
+      displayExpiredSessionMessage();
+    } else {
+      console.log('✅ Session appears valid, showing check-in page');
+      // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
+      // without assuming any auth state
+      // The canonical handlePageDisplay is defined later and will run after auth change
+      // events; here we just reflect the session view immediately.
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentCheckin').style.display = 'block';
+      showStudentCheckin(sessionId);
+    }
   } else if (view === 'student') {
     // On refresh with student details URL, go to homepage instead
     console.log('Student details view on refresh: redirecting to dashboard/homepage');
@@ -113,13 +125,23 @@ document.addEventListener('DOMContentLoaded', function() {
     })
     .catch(error => {
       console.error('Initialization error:', error);
-      // If there's a session ID, still try to show the check-in page
+      // If there's a session ID, check expiry even if Firebase init failed
       if (sessionId) {
-        // Ensure the student check-in view is visible even if Firebase init failed
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('teacherDashboard').style.display = 'none';
-        document.getElementById('studentCheckin').style.display = 'block';
-        showStudentCheckin(sessionId);
+        // Check local storage for expiry even when Firebase fails
+        const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
+        if (cachedSession && isSessionExpired(cachedSession)) {
+          console.log('❌ Session is expired (Firebase failed), showing expiry message');
+          document.getElementById('loginScreen').style.display = 'none';
+          document.getElementById('teacherDashboard').style.display = 'none';
+          document.getElementById('studentCheckin').style.display = 'block';
+          displayExpiredSessionMessage();
+        } else {
+          // Ensure the student check-in view is visible even if Firebase init failed
+          document.getElementById('loginScreen').style.display = 'none';
+          document.getElementById('teacherDashboard').style.display = 'none';
+          document.getElementById('studentCheckin').style.display = 'block';
+          showStudentCheckin(sessionId);
+        }
       } else if (view === 'student') {
         // Ensure the student details view is visible even if Firebase init failed
         document.getElementById('loginScreen').style.display = 'none';
@@ -240,7 +262,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
 const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 150;  // 150 meters radius
+const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
 
 // Timetable data
 const timetable = {
@@ -1116,6 +1138,187 @@ function findTeacherAndTime(date, subjectCode) {
 }
 
 // Enhanced startAttendance with secret code
+// Test function to verify expiry - can be called from console: testExpiry()
+window.testExpiry = function() {
+  const testSession = {
+    sessionId: 'TEST_123',
+    date: new Date().toLocaleDateString('en-GB'),
+    expiryTime: new Date(Date.now() - 1000).toISOString() // 1 second ago
+  };
+  
+  console.log('Testing expiry with expired session:', isSessionExpired(testSession));
+  
+  const validSession = {
+    sessionId: 'TEST_456',
+    date: new Date().toLocaleDateString('en-GB'),
+    expiryTime: new Date(Date.now() + 3600000).toISOString() // 1 hour from now
+  };
+  
+  console.log('Testing expiry with valid session:', isSessionExpired(validSession));
+};
+
+function isSessionExpired(sessionData) {
+  // Handle null/undefined sessionData
+  if (!sessionData) {
+    console.log('⚠️ Session data is null/undefined, treating as expired');
+    return true;
+  }
+  
+  console.log('🔍 Checking session expiry:', {
+    hasExpiryTime: !!sessionData.expiryTime,
+    expiryTime: sessionData.expiryTime,
+    isExpired: sessionData.isExpired,
+    sessionDate: sessionData.date
+  });
+  
+  // Check if session was manually expired via isExpired flag
+  if (sessionData.isExpired === true) {
+    console.log('❌ Session expired via isExpired flag (manual expiry)');
+    return true;
+  }
+  
+  if (!sessionData.expiryTime) {
+    // For very old sessions (created before expiry feature), consider them expired after 2 hours
+    // This prevents indefinite access to old sessions
+    let sessionDate;
+    if (sessionData.date) {
+      try {
+        // Parse dd/mm/yyyy format
+        const parts = sessionData.date.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          // Check if date is valid
+          if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 2020) {
+            sessionDate = parsedDate;
+          } else {
+            console.log('⚠️ Invalid parsed date, using creation time fallback');
+            sessionDate = new Date();
+          }
+        } else {
+          console.log('⚠️ Invalid date format, using creation time fallback');
+          sessionDate = new Date();
+        }
+      } catch (e) {
+        console.log('⚠️ Date parsing error, using creation time fallback:', e);
+        sessionDate = new Date();
+      }
+    } else {
+      sessionDate = new Date();
+    }
+    
+    // Only expire old sessions if they are actually old (created more than 2 hours ago)
+    const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+    const age = Date.now() - sessionDate.getTime();
+    const isOld = age > maxAge;
+    console.log('📅 Old session check:', { 
+      age: Math.round(age / 1000 / 60), // minutes
+      maxAge: Math.round(maxAge / 1000 / 60), // minutes
+      isOld, 
+      parsedDate: sessionDate.toISOString() 
+    });
+    return isOld;
+  }
+  
+  const now = new Date();
+  
+  // Handle missing or invalid expiryTime
+  if (!sessionData.expiryTime || sessionData.expiryTime === 'Invalid Date') {
+    console.log('⚠️ Invalid expiryTime found, treating as expired:', sessionData.expiryTime);
+    return true; // Treat invalid dates as expired
+  }
+  
+  try {
+    // Handle Firestore Timestamp objects
+    let expiryTime;
+    if (sessionData.expiryTime && typeof sessionData.expiryTime.toDate === 'function') {
+      // Firestore Timestamp object
+      expiryTime = sessionData.expiryTime.toDate();
+    } else if (typeof sessionData.expiryTime === 'string') {
+      // ISO string from localStorage
+      expiryTime = new Date(sessionData.expiryTime);
+    } else if (sessionData.expiryTime && typeof sessionData.expiryTime.seconds === 'number') {
+      // Firestore Timestamp in plain object format
+      expiryTime = new Date(sessionData.expiryTime.seconds * 1000);
+    } else {
+      // Direct Date object or other format
+      expiryTime = new Date(sessionData.expiryTime);
+    }
+    
+    if (isNaN(expiryTime.getTime())) {
+      console.log('⚠️ Invalid date object from expiryTime, treating as expired:', sessionData.expiryTime);
+      return true;
+    }
+    
+    // Add 5-minute buffer to prevent premature expiry due to clock differences
+    const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const isExpired = now.getTime() > (expiryTime.getTime() + bufferTime);
+    console.log('⏰ Expiry check:', { 
+      now: now.toISOString(), 
+      expiryTime: expiryTime.toISOString(), 
+      isExpired,
+      bufferMinutes: 5
+    });
+    return isExpired;
+  } catch (error) {
+    console.log('⚠️ Error parsing expiryTime, treating as expired:', error);
+    return true;
+  }
+}
+
+async function expireSessionManually() {
+  if (!sessionId) {
+    alert('No active session to expire');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to expire this attendance session? Students will no longer be able to mark attendance.')) {
+    return;
+  }
+
+  try {
+    // Update Firebase
+    if (firebaseInitialized) {
+      await db.collection('attendanceSessions').doc(sessionId).update({
+        isExpired: true,
+        expiredAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'expired'
+      });
+    }
+
+    // Update local storage
+    const localSessionKey = `session_${currentSession.date}_${currentSession.subjectCode}`;
+    const sessionData = JSON.parse(localStorage.getItem(localSessionKey) || '{}');
+    sessionData.isExpired = true;
+    sessionData.expiredAt = new Date().toISOString();
+    localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
+    localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
+
+    // Update UI
+    document.getElementById('sessionExpired').style.display = 'block';
+    document.getElementById('expiryInfo').textContent = 'Session expired manually';
+    document.getElementById('expiryInfo').style.color = '#e74c3c';
+    
+    // Disable attendance marking
+    document.getElementById('studentCheckinForm')?.style.setProperty('opacity', '0.5');
+    document.getElementById('studentCheckinForm')?.style.setProperty('pointer-events', 'none');
+    
+    // Change expire button to restart button
+    const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
+    if (expireBtn) {
+      expireBtn.textContent = '🔄 Restart Session';
+      expireBtn.style.backgroundColor = '#27ae60';
+      expireBtn.setAttribute('onclick', 'restartSession()');
+    }
+    
+    showNotification('Session expired successfully', 'success');
+    console.log('Session expired manually:', sessionId);
+  } catch (error) {
+    console.error('Error expiring session:', error);
+    alert('Error expiring session. Please try again.');
+  }
+}
+
 async function startAttendance() {
   if (!validateForm()) {
     alert('Please ensure all fields are filled including the secret code');
@@ -1131,22 +1334,39 @@ async function startAttendance() {
   const formattedDate = selectedDate.toLocaleDateString('en-GB');
   
   const existingSession = await findExistingSession(formattedDate, subjectCode);
-  
-  let isNewSession = false;
-  
-  if (existingSession && existingSession.id) {
-    sessionId = existingSession.id;
-    currentSession = existingSession;
-    sessionSecretCode = existingSession.secretCode || secretCode;
-    console.log('🔄 Continuing existing session:', sessionId);
-    showNotification('📚 Continuing existing attendance session', 'success');
     
-    await loadExistingAttendance(sessionId);
-  } else {
-    isNewSession = true;
+    let isNewSession = false;
+    
+    if (existingSession && existingSession.id) {
+      // Check if existing session is expired
+      if (isSessionExpired(existingSession)) {
+        sessionId = existingSession.id;
+        currentSession = existingSession;
+        sessionSecretCode = existingSession.secretCode || secretCode;
+        console.log('📖 Viewing expired session:', sessionId);
+        showNotification('📖 Viewing expired attendance session', 'info');
+        
+        await loadExistingAttendance(sessionId);
+      } else {
+        sessionId = existingSession.id;
+        currentSession = existingSession;
+        sessionSecretCode = existingSession.secretCode || secretCode;
+        console.log('🔄 Continuing existing session:', sessionId);
+        showNotification('📚 Continuing existing attendance session', 'success');
+        
+        await loadExistingAttendance(sessionId);
+      }
+    } else {
+      isNewSession = true;
+    }
+
+  if (isNewSession) {
     const classDetails = findTeacherAndTime(date, subjectCode);
     sessionId = generateSessionId();
     sessionSecretCode = secretCode;
+
+    const expiryTime = new Date();
+    expiryTime.setHours(expiryTime.getHours() + 1);
 
     currentSession = {
       sessionId: sessionId,
@@ -1156,12 +1376,15 @@ async function startAttendance() {
       subjectCode: subjectCode,
       subjectName: subjectNames[subjectCode],
       teacherName: classDetails.teacher,
-      secretCode: sessionSecretCode
+      secretCode: sessionSecretCode,
+      expiryTime: expiryTime.toISOString(),
+      isExpired: false,
+      createdAt: new Date().toISOString()
     };
 
     await createAttendanceSession(currentSession);
     console.log('🆕 Created new session:', sessionId);
-    showNotification('✅ New attendance session started', 'success');
+    showNotification('✅ New attendance session started (expires in 1 hour)', 'success');
     
     attendance = {};
     attendanceTime = {};
@@ -1169,28 +1392,117 @@ async function startAttendance() {
 
   checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
 
+  const isExpired = isSessionExpired(currentSession);
+  const sessionStatus = isNewSession ? 'New' : (isExpired ? 'Viewing Expired' : 'Continuing');
+  
   document.getElementById('classInfo').innerHTML = `
-    <h3>${isNewSession ? 'New' : 'Continuing'} Attendance Session</h3>
+    <h3>${sessionStatus} Attendance Session</h3>
     <div class="class-details">
       <div><strong>Date:</strong> ${currentSession.date} (${currentSession.day})</div>
       <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
       <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
       <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
-      ${!isNewSession ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
+      ${!isNewSession && !isExpired ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
     </div>
     <div class="secret-code-info">
       <strong>🔑 Secret Code:</strong>
       <div class="secret-code-display">${sessionSecretCode}</div>
     </div>
+    <div class="expiry-info" id="expiryInfo">
+      ${isExpired ? '<strong>⏰ Expired:</strong> This session has expired' : `<strong>⏰ Expires:</strong> ${new Date(currentSession.expiryTime).toLocaleString()}`}
+    </div>
+    ${isExpired ? '<div class="session-expired" id="sessionExpired">❌ Session Expired - Students can no longer mark attendance</div>' : ''}
   `;
 
   document.getElementById('sessionUrl').textContent = checkinUrl;
+
+  // Replace expire button with restart button for expired sessions
+  if (isExpired) {
+    const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
+    if (expireBtn) {
+      expireBtn.textContent = '🔄 Restart Session';
+      expireBtn.style.backgroundColor = '#27ae60';
+      expireBtn.setAttribute('onclick', 'restartSession()');
+    }
+  }
 
   document.getElementById('setupSection').style.display = 'none';
   document.getElementById('attendanceSection').style.display = 'block';
 
   renderTable();
   startListeningToAttendance();
+}
+
+async function restartSession() {
+  if (!confirm('Are you sure you want to restart this session? This will reset the session expiry time and clear existing attendance data.')) {
+    return;
+  }
+
+  try {
+    // Reuse existing session ID to keep the same address
+    const expiryTime = new Date();
+    expiryTime.setHours(expiryTime.getHours() + 1);
+
+    const newSession = {
+      sessionId: sessionId, // Keep the same session ID
+      date: currentSession.date,
+      day: currentSession.day,
+      timeSlot: currentSession.timeSlot,
+      subjectCode: currentSession.subjectCode,
+      subjectName: currentSession.subjectName,
+      teacherName: currentSession.teacherName,
+      secretCode: currentSession.secretCode,
+      expiryTime: expiryTime.toISOString(),
+      isExpired: false,
+      createdAt: new Date().toISOString()
+    };
+
+    await createAttendanceSession(newSession);
+    
+    // Update current session
+    currentSession = newSession;
+    
+    // Keep the same checkin URL since session ID hasn't changed
+    checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+    document.getElementById('sessionUrl').textContent = checkinUrl;
+    
+    document.getElementById('classInfo').innerHTML = `
+      <h3>Restarted Attendance Session</h3>
+      <div class="class-details">
+        <div><strong>Date:</strong> ${newSession.date} (${newSession.day})</div>
+        <div><strong>Time:</strong> ${newSession.timeSlot}</div>
+        <div><strong>Subject:</strong> ${newSession.subjectName}</div>
+        <div><strong>Teacher:</strong> ${newSession.teacherName}</div>
+        <div><strong>Status:</strong> Session restarted with fresh expiry</div>
+      </div>
+      <div class="secret-code-info">
+        <strong>🔑 Secret Code:</strong>
+        <div class="secret-code-display">${newSession.secretCode}</div>
+      </div>
+      <div class="expiry-info" id="expiryInfo">
+        <strong>⏰ Expires:</strong> ${new Date(newSession.expiryTime).toLocaleString()}
+      </div>
+    `;
+
+    // Reset button back to expire
+    const restartBtn = document.querySelector('.share-btn[onclick="restartSession()"]');
+    if (restartBtn) {
+      restartBtn.textContent = '⏰ Expire Session';
+      restartBtn.style.backgroundColor = '#e74c3c';
+      restartBtn.setAttribute('onclick', 'expireSessionManually()');
+    }
+
+    // Keep existing attendance data when restarting session
+    renderTable();
+    startListeningToAttendance();
+    
+    showNotification('✅ Session restarted successfully with fresh expiry', 'success');
+    console.log('Session restarted:', sessionId);
+    
+  } catch (error) {
+    console.error('Error restarting session:', error);
+    alert('Error restarting session. Please try again.');
+  }
 }
 
 // Share Functions
@@ -1585,7 +1897,6 @@ async function findExistingSession(date, subjectCode) {
     const querySnapshot = await sessionsRef
       .where('date', '==', date)
       .where('subjectCode', '==', subjectCode)
-      .where('status', '==', 'active')
       .limit(1)
       .get();
 
@@ -1660,9 +1971,19 @@ async function loadExistingAttendance(sessionId) {
 }
 
 async function createAttendanceSession(sessionData) {
+  // Calculate expiry time (1 hour from now)
+  const expiryTime = new Date();
+  expiryTime.setHours(expiryTime.getHours() + 1);
+  
+  const sessionWithExpiry = {
+    ...sessionData,
+    expiryTime: expiryTime.toISOString(),
+    isExpired: false
+  };
+  
   const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
-  localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
-  localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionData));
+  localStorage.setItem(localSessionKey, JSON.stringify(sessionWithExpiry));
+  localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionWithExpiry));
 
   if (!firebaseInitialized) {
     console.log('📂 Session saved to local storage only');
@@ -1671,13 +1992,15 @@ async function createAttendanceSession(sessionData) {
 
   try {
     await db.collection('attendanceSessions').doc(sessionData.sessionId).set({
-      ...sessionData,
+      ...sessionWithExpiry,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       status: 'active',
       totalStudents: students.length,
-      presentCount: 0
+      presentCount: 0,
+      expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
+      isExpired: false
     });
-    console.log('✅ Attendance session created in Firebase');
+    console.log('✅ Attendance session created in Firebase with 1-hour expiry');
   } catch (error) {
     console.error('❌ Error creating attendance session in Firebase:', error);
   }
@@ -2286,6 +2609,33 @@ function printAttendance() {
   }
 }
 
+// Manual test function for expiry
+window.testExpiredSession = function() {
+  const testSessionId = 'TEST_EXPIRED_' + Date.now();
+  const expiredSession = {
+    sessionId: testSessionId,
+    date: new Date().toLocaleDateString('en-GB'),
+    subjectName: 'Test Session',
+    teacherName: 'Test Teacher',
+    timeSlot: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+    secretCode: 'TEST123',
+    expiryTime: new Date(Date.now() - 1000).toISOString(), // 1 second ago
+    isExpired: true
+  };
+  
+  // Store in localStorage for testing
+  localStorage.setItem('attendanceSession_' + testSessionId, JSON.stringify(expiredSession));
+  
+  // Navigate to test URL
+  const testUrl = window.location.href.split('?')[0] + '?session=' + testSessionId;
+  console.log('Test expired session URL:', testUrl);
+  
+  // Optionally open in new tab
+  if (confirm('Open test expired session in new tab?')) {
+    window.open(testUrl, '_blank');
+  }
+};
+
 // Print the table exactly as it appears on the page with full styling
 function printTableAsIs() {
   try {
@@ -2345,13 +2695,25 @@ async function showStudentCheckin(sessionParam) {
   // If we have a valid cached session, use it immediately
   if (session && session.sessionId === sessionParam) {
     console.log('📦 Using cached session data');
-    displayStudentCheckin(session);
-    
-    // Still try to update from Firestore in the background
-    if (firebaseInitialized) {
-      updateSessionFromFirestore(sessionParam);
+    // Check if session is expired before displaying
+    if (isSessionExpired(session)) {
+      displayExpiredSessionMessage();
+      return;
     }
-    return;
+    
+    // For cached sessions without expiry, force refresh from Firestore
+    if (!session.expiryTime && firebaseInitialized) {
+      console.log('🔄 Cached session missing expiry, refreshing from Firestore...');
+      // Skip cached session and use Firestore instead
+    } else {
+      displayStudentCheckin(session);
+      
+      // Still try to update from Firestore in the background
+      if (firebaseInitialized) {
+        updateSessionFromFirestore(sessionParam);
+      }
+      return;
+    }
   }
   
   // If we don't have a valid session, try to load from Firestore
@@ -2363,6 +2725,19 @@ async function showStudentCheckin(sessionParam) {
       if (doc.exists) {
         session = doc.data();
         console.log('✅ Session data loaded from Firestore:', session);
+        
+        // Convert Firestore Timestamp to proper format before expiry check
+        if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
+          session.expiryTime = session.expiryTime.toDate().toISOString();
+        } else if (session.expiryTime && typeof session.expiryTime.seconds === 'number') {
+          session.expiryTime = new Date(session.expiryTime.seconds * 1000).toISOString();
+        }
+        
+        // Check if session is expired before displaying
+        if (isSessionExpired(session)) {
+          displayExpiredSessionMessage();
+          return;
+        }
         
         // Cache the session data
         localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
@@ -2386,8 +2761,17 @@ async function showStudentCheckin(sessionParam) {
       subjectName: 'Attendance Session',
       teacherName: 'Teacher',
       timeSlot: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-      secretCode: ''
+      secretCode: '',
+      // Add expiry to temporary sessions too (1 hour from creation)
+      expiryTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      isExpired: false
     };
+    
+    // Check if temporary session is expired
+    if (isSessionExpired(tempSession)) {
+      displayExpiredSessionMessage();
+      return;
+    }
     
     // Display the check-in form with the temporary session
     displayStudentCheckin(tempSession);
@@ -2401,8 +2785,16 @@ async function updateSessionFromFirestore(sessionParam) {
   try {
     const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
     if (doc.exists) {
-      const session = doc.data();
+      let session = doc.data();
       console.log('🔄 Updated session data from Firestore');
+      
+      // Convert Firestore Timestamp to proper format for consistency
+      if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
+        session.expiryTime = session.expiryTime.toDate().toISOString();
+      } else if (session.expiryTime && typeof session.expiryTime.seconds === 'number') {
+        session.expiryTime = new Date(session.expiryTime.seconds * 1000).toISOString();
+      }
+      
       localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
     }
   } catch (error) {
@@ -2434,8 +2826,71 @@ function showError(message) {
   }
 }
 
+function displayExpiredSessionMessage() {
+  // Hide other sections
+  const loginScreen = document.getElementById('loginScreen');
+  const teacherDashboard = document.getElementById('teacherDashboard');
+  const checkinSection = document.getElementById('studentCheckin');
+  
+  if (loginScreen) loginScreen.style.display = 'none';
+  if (teacherDashboard) teacherDashboard.style.display = 'none';
+  if (checkinSection) {
+    checkinSection.style.display = 'block';
+    
+    // Replace the entire content with expired message
+    checkinSection.innerHTML = `
+      <div class="checkin-header">
+        <h2>⏰ Attendance Over</h2>
+        <p>GNDU Attendance System</p>
+      </div>
+      <div style="text-align: center; padding: 40px 20px; max-width: 400px; margin: 0 auto;">
+        <div style="font-size: 64px; margin-bottom: 20px;">⏰</div>
+        <h2 style="color: #e74c3c; margin-bottom: 15px;">Attendance is Over</h2>
+        <p style="font-size: 16px; color: #666; margin-bottom: 20px;">
+          This attendance session has expired and is no longer accepting responses.
+        </p>
+        <p style="font-size: 14px; color: #999;">
+          Please contact your teacher if you need to mark attendance for this session.
+        </p>
+      </div>
+    `;
+  }
+}
+
 async function displayStudentCheckin(session) {
   console.log('🎯 Displaying student check-in for session:', session.sessionId);
+  
+  // Check if session is expired
+  if (isSessionExpired(session)) {
+    // Hide other sections and show expired message
+    const loginScreen = document.getElementById('loginScreen');
+    const teacherDashboard = document.getElementById('teacherDashboard');
+    const checkinSection = document.getElementById('studentCheckin');
+    
+    if (loginScreen) loginScreen.style.display = 'none';
+    if (teacherDashboard) teacherDashboard.style.display = 'none';
+    if (checkinSection) {
+      checkinSection.style.display = 'block';
+      
+      // Clear the form and show attendance over message
+      const form = document.querySelector('.checkin-form');
+      if (form) {
+        form.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">⏰</div>
+            <h2 style="color: #e74c3c; margin-bottom: 15px;">Attendance is Over</h2>
+            <p style="font-size: 16px; color: #666; margin-bottom: 20px;">
+              This attendance session has expired and is no longer accepting responses.
+            </p>
+            <p style="font-size: 14px; color: #999;">
+              Please contact your teacher if you need to mark attendance for this session.
+            </p>
+          </div>
+        `;
+      }
+    }
+    return;
+  }
   
   // Store the secret code for validation
   window.sessionSecretCode = session.secretCode || '';
@@ -2580,10 +3035,22 @@ async function submitAttendance() {
   if (!total && window.idByRoll) total = Object.keys(window.idByRoll).length;
   if (!total) {
     showError('Student list not loaded yet. Please refresh the page and try again.');
+    // Re-enable form on validation error
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
     return;
   }
   if (!Number.isInteger(rollNum) || rollNum < 1 || rollNum > total) {
     showError(`Roll Number must be a number between 1 and ${total} (inclusive).`);
+    // Re-enable form on validation error
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
     return;
   }
 
@@ -2600,12 +3067,24 @@ async function submitAttendance() {
   } catch (error) {
     console.error('Error loading session:', error);
     showError('Session configuration error. Please contact your teacher or try again later.');
+    // Re-enable form on validation error
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
     return;
   }
 
   // Verify secret code
   if (secretCodeInput !== session.secretCode.toUpperCase()) {
     showError('❌ Incorrect secret code. Please check with your teacher and try again.');
+    // Re-enable form on validation error
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
     return;
   }
 
@@ -2616,6 +3095,12 @@ async function submitAttendance() {
       ? `${(distance / 1000).toFixed(1)} km away` 
       : `${Math.round(distance)} meters away`;
     showError(`❌ You must be inside the university campus to mark attendance. You are ${distanceText} from GNDU.`);
+    // Re-enable form on validation error
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Mark Me Present';
+    }
+    if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
     return;
   }
 
@@ -2637,6 +3122,31 @@ async function submitAttendance() {
     const studentList = Array.isArray(students) ? students : (Array.isArray(window.students) ? window.students : []);
     const student = studentList.find(s => s?.id?.toString() === String(mappedStudentId));
     const inputNorm = normalizeName(studentName);
+    
+    // Validate both name and roll number match
+    if (!student) {
+      showError('❌ Invalid Roll Number. Please check your roll number and try again.');
+      // Re-enable form on validation error
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Mark Me Present';
+      }
+      if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
+      return;
+    }
+    
+    const actualNameNorm = normalizeName(student.name);
+    if (inputNorm !== actualNameNorm) {
+      showError('❌ Name does not match the roll number. Please ensure both your name and roll number are correct.');
+      // Re-enable form on validation error
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Mark Me Present';
+      }
+      if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
+      return;
+    }
+    
     // Check if already marked attendance locally
     const attendanceKey = 'attendance_' + urlSessionId;
     const localAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
@@ -2644,6 +3154,7 @@ async function submitAttendance() {
     if (localAttendance[student.id]) {
       showError('You have already marked your attendance for this session.');
       if (submitBtn) submitBtn.disabled = true;
+      if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
       return;
     }
     

@@ -103,7 +103,16 @@
             <button class="share-btn" onclick="shareWhatsApp()">
               📱 Share on WhatsApp
             </button>
+            <button class="share-btn" onclick="expireSessionManually()" style="background-color: #e74c3c; color: white;">
+              ⏰ Expire Session
+            </button>
           </div>
+        </div>
+        <div class="expiry-info" id="expiryInfo" style="margin-top: 10px; color: #666; font-size: 14px;">
+          <!-- Expiry time will be displayed here -->
+        </div>
+        <div class="session-expired" id="sessionExpired" style="display: none; margin-top: 10px; padding: 10px; background-color: #ffebee; color: #c62828; border-radius: 4px; font-weight: bold;">
+          ⚠️ This attendance session has expired. Students can no longer mark attendance.
         </div>
       </div>
       

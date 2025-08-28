@@ -589,6 +589,36 @@ tbody tr:nth-child(even) {
   border: 2px dashed rgba(255, 255, 255, 0.5);
 }
 
+/* Expiry information styles */
+.expiry-info {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-top: 15px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+  border-left: 4px solid #f39c12;
+}
+
+.session-expired {
+  background: #ffebee;
+  color: #c62828;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 15px;
+  text-align: center;
+  font-weight: bold;
+  border: 1px solid #ffcdd2;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.session-expired::before {
+  content: '⚠️';
+  margin-right: 8px;
+  font-size: 1.2rem;
+}
+
 .checkin-container {
   max-width: 500px;
   margin: 50px auto;
