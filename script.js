@@ -5,15 +5,15 @@
 // script.js (uses Firebase v9 compat via CDN included in index.html)
 
 
-// Use the configuration from config.js
-const firebaseConfig = window.firebaseConfig || {
-  apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
-  authDomain: "gndu-attendance-system.firebaseapp.com",
-  projectId: "gndu-attendance-system",
-  storageBucket: "gndu-attendance-system.firebasestorage.app",
-  messagingSenderId: "874240831454",
-  appId: "1:874240831454:web:aaaa1909d87d9a77e0f74f",
-  measurementId: "G-7TNPBZ3ZZN"
+// Replace your window.__ENV approach with:
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 
