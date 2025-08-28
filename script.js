@@ -27,8 +27,7 @@ let attendanceTime = {};
 let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
-// Global students array (now loaded from Firestore)
-let students = [];
+// Students array is loaded from student.js
 
 // NOTE: handlePageDisplay is defined later in the file with enhanced logic.
 // Keeping a single implementation to avoid conflicts.
@@ -204,7 +203,9 @@ async function loadStudentsFromFirestore() {
       return;
     }
     const snapshot = await db.collection('students').orderBy('name').get();
-    students = snapshot.docs.map(doc => {
+    // Clear existing students and add new ones
+    students.length = 0;
+    const firestoreStudents = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: data.id,
@@ -214,6 +215,15 @@ async function loadStudentsFromFirestore() {
         lab_group_no: data.lab_group_no
       };
     });
+    
+    // Ensure Jatin (id: 17032400065) is always at the end
+    const jatinIndex = firestoreStudents.findIndex(s => s.id === '17032400065');
+    if (jatinIndex !== -1) {
+      const jatin = firestoreStudents.splice(jatinIndex, 1)[0];
+      firestoreStudents.push(jatin);
+    }
+    
+    students.push(...firestoreStudents);
     console.log(`✅ Loaded ${students.length} students from Firestore`);
     const loadingMsg = document.getElementById('loadingMessage');
     if (loadingMsg) loadingMsg.style.display = 'none';
@@ -2598,13 +2608,7 @@ async function submitAttendance() {
   }
 
   // Use the location result from the initial check
-  // If Firebase is not initialized, bypass location verification
-  if (!firebaseInitialized) {
-    console.log('Firebase not initialized, bypassing location verification check');
-    // Ensure locationVerified is true when Firebase is not initialized
-    window.locationVerified = true;
-  }
-  else if (!window.locationVerified) {
+  if (!window.locationVerified) {
     const distance = window.locationDistance || 0;
     const distanceText = distance >= 1000 
       ? `${(distance / 1000).toFixed(1)} km away` 
