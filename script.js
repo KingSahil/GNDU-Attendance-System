@@ -5,15 +5,17 @@
 // script.js (uses Firebase v9 compat via CDN included in index.html)
 
 
-const firebaseConfig = (window.__ENV && window.__ENV.firebaseConfig) ? window.__ENV.firebaseConfig : {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
-  measurementId: ""
+// Use the configuration from config.js
+const firebaseConfig = window.firebaseConfig || {
+  apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
+  authDomain: "gndu-attendance-system.firebaseapp.com",
+  projectId: "gndu-attendance-system",
+  storageBucket: "gndu-attendance-system.firebasestorage.app",
+  messagingSenderId: "874240831454",
+  appId: "1:874240831454:web:aaaa1909d87d9a77e0f74f",
+  measurementId: "G-7TNPBZ3ZZN"
 };
+
 
 // Initialize Firebase
 let db;
