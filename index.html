@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GNDU Attendance System - Computer Engineering & Technology</title>
   <!-- Basic Content Security Policy -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com https://*.firebasestorage.app; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.firebaseapp.com https://*.firebasestorage.app; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'self' https://*.firebaseapp.com;">
   
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -16,6 +16,21 @@
   <link rel="stylesheet" href="styles.css">
   
   <!-- Environment Configuration is loaded from .env file -->
+  <script>
+    // Immediately check URL parameters to prevent login screen flicker
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session');
+      
+      if (sessionId) {
+        // Hide login screen immediately for student check-in
+        document.documentElement.style.display = 'none';
+        document.addEventListener('DOMContentLoaded', function() {
+          document.documentElement.style.display = '';
+        });
+      }
+    })();
+  </script>
 </head>
 <body>
   <!-- Login Screen -->

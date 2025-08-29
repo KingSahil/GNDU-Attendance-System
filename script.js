@@ -36,58 +36,33 @@ let checkinUrl = '';
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
-  // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
-  
-  // Check for session or student view in URL first
+  // Immediately handle URL parameters to prevent any flicker
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
   const view = urlParams.get('view');
 
   if (sessionId) {
-    // If there's a session ID, check expiry immediately
+    // Immediately show student check-in without any intermediate states
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'block';
     
-    
-    // Check local storage first for immediate expiry check
-    const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
-    if (cachedSession && isSessionExpired(cachedSession)) {
-      
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      displayExpiredSessionMessage();
-    } else {
-      
-      // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
-      // without assuming any auth state
-      // The canonical handlePageDisplay is defined later and will run after auth change
-      // events; here we just reflect the session view immediately.
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      showStudentCheckin(sessionId);
-    }
+    // Show student check-in immediately
+    showStudentCheckin(sessionId);
   } else if (view === 'student') {
-    // On refresh with student details URL, go to homepage instead
-    
-    // Strip query and show dashboard; modal can be opened via click only
+    // Handle student details view
     if (window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     showDashboard();
   } else {
-    // Otherwise, optimistically show dashboard instantly if we have a cached user
-    // to avoid login screen flicker while Firebase initializes. Auth listener will
-    // correct the view if the session is actually invalid/expired.
+    // Check for cached user to avoid login screen flicker
     const cachedUser = localStorage.getItem('user');
     if (cachedUser) {
-      
       showDashboard();
     } else {
-      // Fall back to showing login screen
       showLoginScreen();
     }
-
-// (moved) helper functions are declared in global scope below
   }
   
   // Initialize Firebase in the background
@@ -260,9 +235,9 @@ async function loadStudentsFromFirestore() {
 }
 
 // Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
-const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
+const UNIVERSITY_LAT = 31.649548 ;  // GNDU latitude
+const UNIVERSITY_LNG = 74.818523 ;  // GNDU longitude
+const ALLOWED_RADIUS_METERS = 100000000;  // 100 meters radius
 
 // Timetable data
 const timetable = {
@@ -471,22 +446,18 @@ function handlePageDisplay(user) {
   const sessionId = urlParams.get('session');
   const view = urlParams.get('view');
   
-  // If we're on a student check-in page, show it regardless of auth state
+  // If we're on a student check-in page, do NOT change the view based on auth state
+  // This prevents flicker when Firebase auth initializes
   if (sessionId) {
-    
-    showStudentCheckin(sessionId);
-    return;
+    return; // Keep student check-in visible regardless of auth state
   }
-  // If student details view is requested (only open if already in modal-open state)
+  
+  // If student details view is requested
   if (view === 'student') {
     if (document.body.classList.contains('modal-open')) {
-      
       document.getElementById('studentDetailsModal').style.display = 'flex';
-      // Load student details
       loadStudentDetailsPage().catch(() => {});
     } else {
-      // Do not auto-open modal on refresh; go to dashboard instead
-      
       showDashboard();
     }
     return;
@@ -494,10 +465,8 @@ function handlePageDisplay(user) {
   
   // Otherwise handle normal auth flow
   if (user) {
-    
     showDashboard();
   } else {
-    
     showLoginScreen();
   }
 }
