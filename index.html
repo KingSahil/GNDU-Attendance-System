@@ -16,21 +16,6 @@
   <link rel="stylesheet" href="styles.css">
   
   <!-- Environment Configuration is loaded from .env file -->
-  <script>
-    // Immediately check URL parameters to prevent login screen flicker
-    (function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session');
-      
-      if (sessionId) {
-        // Hide login screen immediately for student check-in
-        document.documentElement.style.display = 'none';
-        document.addEventListener('DOMContentLoaded', function() {
-          document.documentElement.style.display = '';
-        });
-      }
-    })();
-  </script>
 </head>
 <body>
   <!-- Login Screen -->
@@ -203,11 +188,11 @@
 
       <div class="form-group">
         <label for="studentId">Roll Number</label>
-        <input type="text" id="studentId" placeholder="Enter your Roll Number" required>
+        <input autocomplete="off" type="text" id="studentId" placeholder="Enter your Roll Number" required>
       </div>
       <div class="form-group">
         <label for="studentName">Full Name</label>
-        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
+        <input autocomplete="off" type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
       <button type="submit" class="checkin-btn" id="submitBtn" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>
