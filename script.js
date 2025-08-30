@@ -45,18 +45,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (sessionId) {
     // If there's a session ID, show check-in page and validate session
-    console.log('Found session ID, loading check-in page...');
+    
     
     // Always show the check-in page first, then validate session from server
     // This prevents immediate expiry from potentially stale cache data
-    console.log('✅ Showing check-in page, will validate session from server');
+    
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'block';
     showStudentCheckin(sessionId);
   } else if (view === 'student') {
     // On refresh with student details URL, go to homepage instead
-    console.log('Student details view on refresh: redirecting to dashboard/homepage');
+    
     // Strip query and show dashboard; modal can be opened via click only
     if (window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // correct the view if the session is actually invalid/expired.
     const cachedUser = localStorage.getItem('user');
     if (cachedUser) {
-      console.log('Cached user found, showing dashboard immediately');
+      
       showDashboard();
     } else {
       // Fall back to showing login screen
@@ -112,13 +112,13 @@ document.addEventListener('DOMContentLoaded', function() {
       return loadStudentsFromFirestore();
     })
     .catch(error => {
-      console.error('Initialization error:', error);
+      
       // If there's a session ID, check expiry even if Firebase init failed
       if (sessionId) {
         // Check local storage for expiry even when Firebase fails
         const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
         if (cachedSession && isSessionExpired(cachedSession)) {
-          console.log('❌ Session is expired (Firebase failed), showing expiry message');
+          ('❌ Session is expired (Firebase failed), showing expiry message');
           document.getElementById('loginScreen').style.display = 'none';
           document.getElementById('teacherDashboard').style.display = 'none';
           document.getElementById('studentCheckin').style.display = 'block';
@@ -153,7 +153,7 @@ function initializeFirebase() {
       const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
       const missing = requiredKeys.filter(k => !firebaseConfig || !firebaseConfig[k]);
       if (missing.length) {
-        console.error('Missing Firebase config keys:', missing);
+        
         updateFirebaseStatus('🔴 Firebase config is missing. Please configure env.js', 'error');
         return reject(new Error('Missing Firebase config: ' + missing.join(', ')));
       }
@@ -162,37 +162,37 @@ function initializeFirebase() {
       db = firebase.firestore();
       auth = firebase.auth();
       
-      console.log('Firebase initialized successfully');
+      
       
       // Set auth persistence
       auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
         .then(() => {
-          console.log('Auth persistence set to LOCAL');
+          
           
           // Enable offline persistence for Firestore
           return db.enablePersistence({ experimentalForceOwningTab: true });
         })
         .then(() => {
-          console.log('Firebase persistence enabled');
+          
           
           // Enable network but don't fail if offline
           return db.enableNetwork().catch(err => {
-            console.warn('Working in offline mode', err);
+            
             updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
           });
         })
         .then(() => {
-          console.log('Firebase initialization complete');
+          
           firebaseInitialized = true;
           updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
           resolve();
         })
         .catch((err) => {
-          console.warn('Firebase initialization warning:', err);
+          
           if (err.code === 'failed-precondition') {
-            console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+            
           } else if (err.code === 'unimplemented') {
-            console.warn('The current browser does not support all of the features required to enable persistence');
+            
           }
           // Still resolve even if there were non-critical errors
           firebaseInitialized = true;
@@ -200,7 +200,7 @@ function initializeFirebase() {
           resolve();
         });
     } catch (error) {
-      console.error('Failed to initialize Firebase:', error);
+      
       updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
       reject(error);
     }
@@ -214,7 +214,7 @@ let isStudentsLoading = false;
 async function loadStudentsFromFirestore() {
   // If already loading or already loaded, return
   if (isStudentsLoading || students.length > 0) {
-    console.log('Students already loaded or loading in progress');
+    
     return;
   }
 
@@ -222,12 +222,12 @@ async function loadStudentsFromFirestore() {
   
   try {
     if (!db) {
-      console.warn('Firestore not initialized yet');
+      
       isStudentsLoading = false;
       return;
     }
     
-    console.log('Fetching students from Firestore...');
+    
     const snapshot = await db.collection('students').orderBy('name').get({
       source: 'server'  // Force server fetch to avoid cache issues
     });
@@ -249,7 +249,7 @@ async function loadStudentsFromFirestore() {
           });
         }
       } catch (e) {
-        console.warn('Error processing student document:', e);
+        
       }
     });
     
@@ -261,7 +261,7 @@ async function loadStudentsFromFirestore() {
     }
     
     students.push(...firestoreStudents);
-    console.log(`✅ Successfully loaded ${students.length} students from Firestore`);
+    
     
     // Update UI
     const loadingMsg = document.getElementById('loadingMessage');
@@ -272,7 +272,7 @@ async function loadStudentsFromFirestore() {
       validateForm();
     }
   } catch (e) {
-    console.error('Failed to load students from Firestore:', e);
+    
     updateFirebaseStatus('🔴 Failed to load students from Firestore', 'error');
   } finally {
     isStudentsLoading = false;
@@ -282,7 +282,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
 const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
+const ALLOWED_RADIUS_METERS = 10000000;  // 100 meters radius
 
 // Timetable data
 const timetable = {
@@ -333,11 +333,11 @@ const subjectNames = {
 
 // Firebase Authentication functions
 window.handleLogin = async function() {
-  console.log('Login button clicked');
+  
   
   // Check if auth is initialized
   if (!auth) {
-    console.error('Firebase auth not initialized');
+    
     alert('Authentication service is not ready. Please refresh the page.');
     return;
   }
@@ -360,12 +360,12 @@ window.handleLogin = async function() {
   if (messageDiv) { clearElement(messageDiv); }
 
   try {
-    console.log('Attempting to sign in with email:', email);
+    
     // Sign in with email and password
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
     
-    console.log('Login successful for user:', user.email);
+    
     
     if (messageDiv) { setMessage(messageDiv, 'success', '✅ Login successful! Redirecting...'); }
     
@@ -373,7 +373,7 @@ window.handleLogin = async function() {
     showDashboard();
     
   } catch (error) {
-    console.error('Login error:', error);
+    
     
     let errorMessage = 'Login failed. Please try again.';
     switch (error.code) {
@@ -437,9 +437,9 @@ async function handleLogout() {
         statusElement.textContent = '🔄 Connecting to Firebase...';
       }
       
-      console.log('User signed out successfully');
+      
     } catch (error) {
-      console.error('Error signing out:', error);
+      
       alert('Error signing out. Please try again.');
     }
   }
@@ -493,20 +493,20 @@ function handlePageDisplay(user) {
   
   // If we're on a student check-in page, show it regardless of auth state
   if (sessionId) {
-    console.log('Auth state changed, showing student check-in page for session:', sessionId);
+    
     showStudentCheckin(sessionId);
     return;
   }
   // If student details view is requested (only open if already in modal-open state)
   if (view === 'student') {
     if (document.body.classList.contains('modal-open')) {
-      console.log('Auth state changed, keeping student details modal open');
+      
       document.getElementById('studentDetailsModal').style.display = 'flex';
       // Load student details
       loadStudentDetailsPage().catch(() => {});
     } else {
       // Do not auto-open modal on refresh; go to dashboard instead
-      console.log('Auth state changed with student view on refresh, showing dashboard');
+      
       showDashboard();
     }
     return;
@@ -514,10 +514,10 @@ function handlePageDisplay(user) {
   
   // Otherwise handle normal auth flow
   if (user) {
-    console.log('User is signed in, showing dashboard');
+    
     showDashboard();
   } else {
-    console.log('User is signed out, showing login screen');
+    
     showLoginScreen();
   }
 }
@@ -571,7 +571,7 @@ async function fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions)
     return await fetchAllAttendanceDocsForStudent(studentId);
   } catch (e) {
     if (e && (e.code === 'failed-precondition' || String(e.message || '').includes('COLLECTION_GROUP'))) {
-      console.warn('collectionGroup index missing; using per-session fallback');
+      
       const results = [];
       const chunkSize = 10;
       for (let i = 0; i < sessions.length; i += chunkSize) {
@@ -590,7 +590,7 @@ async function fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions)
               return { id: d.id, ...d.data(), _path: d.ref.path };
             }
           } catch (err) {
-            console.warn('Fallback query failed for session', s.id, err);
+            
           }
           return null;
         });
@@ -639,7 +639,7 @@ async function loadStudentDetailsPage() {
         }
       });
     } catch (e) {
-      console.error('Error during auth/student load:', e);
+      
     }
 
     const sessions = await fetchAllSessionsForDetails();
@@ -694,9 +694,9 @@ async function loadStudentDetailsPage() {
     }
 
     // Debug log student data
-    console.log('Students array length:', students?.length || 0);
-    console.log('Looking for student ID:', studentId, 'Type:', typeof studentId);
-    console.log('Student name from attendance:', studentName);
+    
+    
+    
     
     // If missing from attendance docs, try students cache with different ID formats
     if (!studentName || !fatherName) {
@@ -725,23 +725,23 @@ async function loadStudentDetailsPage() {
         }
       }
       
-      console.log('Found student in cache:', foundStudent);
+      
       if (foundStudent) {
         if (!studentName && foundStudent.name) {
           studentName = foundStudent.name;
-          console.log('Using name from cache:', studentName);
+          
         }
         if (!fatherName && foundStudent.father) {
           fatherName = foundStudent.father;
-          console.log('Using father name from cache:', fatherName);
+          
         }
       } else {
-        console.log('No student found in cache with ID formats:', possibleIdFormats);
+        
       }
     }
 
     // Fallback to student ID if name not found
-    console.log('Final student name:', studentName);
+    
     const displayName = studentName || `Student ${studentId}`;
     
     // Update the student name in the UI
@@ -771,7 +771,7 @@ async function loadStudentDetailsPage() {
       }
     }
   } catch (e) {
-    console.error(e);
+    
     showErrorInline('Failed to load student attendance. See console for details.');
   }
 }
@@ -837,7 +837,7 @@ async function checkUserLocation(retryCount = 0) {
   
   // For production, we recommend using HTTPS, but allow HTTP for local development
   if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    console.warn('For production, please use HTTPS for better security');
+    
     // Continue with location check even without HTTPS
   }
   
@@ -852,23 +852,17 @@ async function checkUserLocation(retryCount = 0) {
     };
     
     // Debug: Log that we're starting location check
-    console.log('Starting location check with options:', options);
+    
     
     const handleSuccess = (position) => {
       try {
         const { latitude, longitude, accuracy } = position.coords;
-        console.log('Got location:', { 
-          latitude, 
-          longitude, 
-          accuracy,
-          universityLat: UNIVERSITY_LAT,
-          universityLng: UNIVERSITY_LNG
-        });
+        
         
         // Calculate distance in meters
         const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
         const distanceRounded = Math.round(distance);
-        console.log(`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
+        (`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
         
         if (isNaN(distance) || !isFinite(distance)) {
           throw new Error('Invalid distance calculation');
@@ -876,24 +870,24 @@ async function checkUserLocation(retryCount = 0) {
         
         if (distance <= ALLOWED_RADIUS_METERS) {
           const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
-          console.log(successMsg);
+          
           showLocationStatus(successMsg, 'allowed');
           resolve({ success: true, distance: distanceRounded });
         } else {
           const statusMsg = `❌ You're ${distanceRounded}m from GNDU (must be within ${ALLOWED_RADIUS_METERS}m)`;
-          console.log(statusMsg);
+          
           showLocationStatus(statusMsg, 'denied');
           resolve({ success: false, distance: distanceRounded });
         }
       } catch (error) {
-        console.error('Error processing location:', error);
+        
         showLocationStatus('❌ Error processing your location', 'denied');
         resolve({ success: false, error: error.message });
       }
     };
     
     const handleError = (error) => {
-      console.error('Error getting location:', error);
+      
       let message = '❌ Error: ';
       
       switch(error.code) {
@@ -948,7 +942,7 @@ async function checkUserLocation(retryCount = 0) {
     if (navigator.permissions) {
       navigator.permissions.query({name: 'geolocation'})
         .then(permissionStatus => {
-          console.log('Geolocation permission state:', permissionStatus.state);
+          
           
           if (permissionStatus.state === 'denied') {
             handleError({ code: 'PERMISSION_DENIED' });
@@ -960,14 +954,14 @@ async function checkUserLocation(retryCount = 0) {
           
           // Listen for permission changes
           permissionStatus.onchange = () => {
-            console.log('Geolocation permission changed to:', permissionStatus.state);
+            
             if (permissionStatus.state === 'granted') {
               navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
             }
           };
         })
         .catch(error => {
-          console.warn('Error checking geolocation permission:', error);
+          
           // If permission query fails, try getting location anyway
           navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
         });
@@ -993,7 +987,7 @@ function requestLocationPermission() {
       window.location.reload();
     },
     (error) => {
-      console.error('Location permission denied:', error);
+      
       updateLocationStatus('❌ Location access denied. Please enable it in your browser settings.', 'denied');
     },
     { enableHighAccuracy: true }
@@ -1064,7 +1058,7 @@ function checkStudentsLoaded() {
   
   if (Array.isArray(students) && students.length > 0) {
     if (loadingMsg) loadingMsg.style.display = 'none';
-    console.log(`✅ Students loaded from Firestore: ${students.length}`);
+    
     return true;
   } else {
     if (loadingMsg) {
@@ -1132,7 +1126,7 @@ async function handleSessionPrefill() {
       validateForm();
     }
   } catch (e) {
-    console.warn('handleSessionPrefill error:', e);
+    
   }
 }
 
@@ -1195,7 +1189,7 @@ function formatExpiryTime(expiryTime) {
     
     return date.toLocaleString();
   } catch (error) {
-    console.warn('Error formatting expiry time:', error);
+    
     return 'Invalid Date';
   }
 }
@@ -1209,7 +1203,7 @@ window.testExpiry = function() {
     expiryTime: new Date(Date.now() - 1000).toISOString() // 1 second ago
   };
   
-  console.log('Testing expiry with expired session:', isSessionExpired(testSession));
+  ('Testing expiry with expired session:', isSessionExpired(testSession));
   
   const validSession = {
     sessionId: 'TEST_456',
@@ -1217,26 +1211,21 @@ window.testExpiry = function() {
     expiryTime: new Date(Date.now() + 3600000).toISOString() // 1 hour from now
   };
   
-  console.log('Testing expiry with valid session:', isSessionExpired(validSession));
+  ('Testing expiry with valid session:', isSessionExpired(validSession));
 };
 
 function isSessionExpired(sessionData) {
   // Handle null/undefined sessionData
   if (!sessionData) {
-    console.log('⚠️ Session data is null/undefined, treating as expired');
+    
     return true;
   }
   
-  console.log('🔍 Checking session expiry:', {
-    hasExpiryTime: !!sessionData.expiryTime,
-    expiryTime: sessionData.expiryTime,
-    isExpired: sessionData.isExpired,
-    sessionDate: sessionData.date
-  });
+  
   
   // Check if session was manually expired via isExpired flag
   if (sessionData.isExpired === true) {
-    console.log('❌ Session expired via isExpired flag (manual expiry)');
+    ('❌ Session expired via isExpired flag (manual expiry)');
     return true;
   }
   
@@ -1255,15 +1244,15 @@ function isSessionExpired(sessionData) {
           if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 2020) {
             sessionDate = parsedDate;
           } else {
-            console.log('⚠️ Invalid parsed date, using creation time fallback');
+            
             sessionDate = new Date();
           }
         } else {
-          console.log('⚠️ Invalid date format, using creation time fallback');
+          
           sessionDate = new Date();
         }
       } catch (e) {
-        console.log('⚠️ Date parsing error, using creation time fallback:', e);
+        
         sessionDate = new Date();
       }
     } else {
@@ -1274,7 +1263,7 @@ function isSessionExpired(sessionData) {
     const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const age = Date.now() - sessionDate.getTime();
     const isOld = age > maxAge;
-    console.log('📅 Old session check:', { 
+    ('📅 Old session check:', { 
       age: Math.round(age / 1000 / 60), // minutes
       maxAge: Math.round(maxAge / 1000 / 60), // minutes
       isOld, 
@@ -1287,7 +1276,7 @@ function isSessionExpired(sessionData) {
   
   // Handle missing or invalid expiryTime
   if (!sessionData.expiryTime || sessionData.expiryTime === 'Invalid Date') {
-    console.log('⚠️ Invalid expiryTime found, treating as expired:', sessionData.expiryTime);
+    
     return true; // Treat invalid dates as expired
   }
   
@@ -1309,14 +1298,14 @@ function isSessionExpired(sessionData) {
     }
     
     if (isNaN(expiryTime.getTime())) {
-      console.log('⚠️ Invalid date object from expiryTime, treating as expired:', sessionData.expiryTime);
+      
       return true;
     }
     
     // Add 5-minute buffer to prevent premature expiry due to clock differences
     const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
     const isExpired = now.getTime() > (expiryTime.getTime() + bufferTime);
-    console.log('⏰ Expiry check:', { 
+    ('⏰ Expiry check:', { 
       now: now.toISOString(), 
       expiryTime: expiryTime.toISOString(), 
       isExpired,
@@ -1324,7 +1313,7 @@ function isSessionExpired(sessionData) {
     });
     return isExpired;
   } catch (error) {
-    console.log('⚠️ Error parsing expiryTime, treating as expired:', error);
+    
     return true;
   }
 }
@@ -1375,9 +1364,9 @@ async function expireSessionManually() {
     }
     
     showNotification('Session expired successfully', 'success');
-    console.log('Session expired manually:', sessionId);
+    
   } catch (error) {
-    console.error('Error expiring session:', error);
+    
     alert('Error expiring session. Please try again.');
   }
 }
@@ -1406,7 +1395,7 @@ async function startAttendance() {
         sessionId = existingSession.id;
         currentSession = existingSession;
         sessionSecretCode = existingSession.secretCode || secretCode;
-        console.log('📖 Viewing expired session:', sessionId);
+        
         showNotification('📖 Viewing expired attendance session', 'info');
         
         await loadExistingAttendance(sessionId);
@@ -1414,7 +1403,7 @@ async function startAttendance() {
         sessionId = existingSession.id;
         currentSession = existingSession;
         sessionSecretCode = existingSession.secretCode || secretCode;
-        console.log('🔄 Continuing existing session:', sessionId);
+        
         showNotification('📚 Continuing existing attendance session', 'success');
         
         await loadExistingAttendance(sessionId);
@@ -1446,7 +1435,7 @@ async function startAttendance() {
     };
 
     await createAttendanceSession(currentSession);
-    console.log('🆕 Created new session:', sessionId);
+    
     showNotification('✅ New attendance session started (expires in 1 hour)', 'success');
     
     attendance = {};
@@ -1566,10 +1555,10 @@ async function restartSession() {
     startListeningToAttendance();
     
     showNotification('✅ Session restarted successfully with fresh expiry', 'success');
-    console.log('Session restarted:', sessionId);
+    
     
   } catch (error) {
-    console.error('Error restarting session:', error);
+    
     alert('Error restarting session. Please try again.');
   }
 }
@@ -1611,7 +1600,7 @@ function closeStudentDetailsModal() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('🚀 GNDU Attendance System starting...');
+  
 
   // Add click handler for close button
   const closeBtn = document.getElementById('closeStudentDetails');
@@ -1703,7 +1692,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     updateRollPlaceholder();
     setupSorting();
-    console.log('✅ Teacher dashboard initialized');
+    
     // Run once on load to detect any existing session for today/selected subject
     handleSessionPrefill();
     // Ensure initial render with proper roll numbers
@@ -1711,7 +1700,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateRollPlaceholder();
     renderTable();
   } else {
-    console.log('✅ Student check-in page initialized');
+    
     (function ensureStudentPageRollMaps(){
       const studentList = (typeof students !== 'undefined' && Array.isArray(students))
         ? students
@@ -1948,19 +1937,19 @@ function applyFilters() {
 
 async function findExistingSession(date, subjectCode) {
   if (!firebaseInitialized) {
-    console.log('🔍 Firebase not available, checking local storage for existing sessions');
+    
     
     const localSessionKey = `session_${date}_${subjectCode}`;
     const localSession = localStorage.getItem(localSessionKey);
     if (localSession) {
-      console.log('📂 Found existing session in local storage');
+      
       return JSON.parse(localSession);
     }
     return null;
   }
 
   try {
-    console.log('🔍 Searching for existing session:', { date, subjectCode });
+    
     
     const sessionsRef = db.collection('attendanceSessions');
     const querySnapshot = await sessionsRef
@@ -1971,14 +1960,14 @@ async function findExistingSession(date, subjectCode) {
 
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];
-      console.log('🎯 Found existing session:', doc.id);
+      
       return { id: doc.id, ...doc.data() };
     }
 
-    console.log('❌ No existing session found');
+    
     return null;
   } catch (error) {
-    console.error('❌ Error searching for existing session:', error);
+    
     return null;
   }
 }
@@ -2011,9 +2000,9 @@ async function loadExistingAttendance(sessionId) {
         }
       });
 
-      console.log(`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
+      (`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
     } catch (error) {
-      console.error('❌ Error loading attendance from Firebase:', error);
+      
     }
   }
 
@@ -2036,7 +2025,7 @@ async function loadExistingAttendance(sessionId) {
     }
   });
 
-  console.log(`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
+  (`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
 }
 
 async function createAttendanceSession(sessionData) {
@@ -2060,7 +2049,7 @@ async function createAttendanceSession(sessionData) {
   localStorage.setItem('attendanceSession_' + sessionData.sessionId, sessionString);
 
   if (!firebaseInitialized) {
-    console.log('📂 Session saved to local storage only');
+    
     return;
   }
 
@@ -2074,9 +2063,9 @@ async function createAttendanceSession(sessionData) {
       expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
       isExpired: false
     });
-    console.log('✅ Attendance session created in Firebase with 1-hour expiry');
+    
   } catch (error) {
-    console.error('❌ Error creating attendance session in Firebase:', error);
+    
   }
 }
 
@@ -2099,16 +2088,16 @@ async function createNewSession(date, subject, secretCode) {
     try {
       const docRef = await db.collection('sessions').add(sessionData);
       sessionId = docRef.id;
-      console.log('🆕 Created new session online:', sessionId);
+      
     } catch (error) {
-      console.warn('⚠️ Could not create session online, using offline mode', error);
+      
       // Create a local ID for offline use
       sessionId = 'offline_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       // Store in local storage for offline use
       const offlineSessions = JSON.parse(localStorage.getItem('offlineSessions') || '[]');
       offlineSessions.push({ id: sessionId, ...sessionData });
       localStorage.setItem('offlineSessions', JSON.stringify(offlineSessions));
-      console.log('🆕 Created new offline session:', sessionId);
+      
       
       // Show warning to user
       showNotification('⚠️ Working in offline mode. Data will sync when back online.', 'warning');
@@ -2116,7 +2105,7 @@ async function createNewSession(date, subject, secretCode) {
     
     return sessionId;
   } catch (error) {
-    console.error('❌ Error creating attendance session:', error);
+    
     throw error;
   }
 }
@@ -2134,7 +2123,7 @@ async function markStudentPresent(studentId, studentData) {
   attendanceTime[studentId] = studentData.time || new Date().toLocaleTimeString();
   
   if (!firebaseInitialized || !studentId || !sessionId) {
-    console.log('📂 Firebase not initialized, saved to local storage only');
+    
     return false;
   }
 
@@ -2163,14 +2152,14 @@ async function markStudentPresent(studentId, studentData) {
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-    console.log('✅ Student attendance saved to Firebase');
+    
     return true;
   } catch (error) {
-    console.error('❌ Error saving attendance to Firebase:', error);
+    
     
     // If offline, the data will be synced when back online
     if (error.code === 'unavailable') {
-      console.log('📴 Offline - Attendance will sync when back online');
+      
       return true; // Consider it a success since it will sync later
     }
     
@@ -2181,7 +2170,7 @@ async function markStudentPresent(studentId, studentData) {
 function startListeningToAttendance() {
   if (!sessionId) return;
   
-  console.log('🔄 Starting to listen for attendance updates for session:', sessionId);
+  
   
   // Clear any existing listener
   if (attendanceListener) {
@@ -2198,21 +2187,21 @@ function startListeningToAttendance() {
     attendanceListener = attendanceRef.onSnapshot(
       (snapshot) => {
         // Success callback
-        console.log('Received attendance update with', snapshot.docChanges().length, 'changes');
+        ('Received attendance update with', snapshot.docChanges().length, 'changes');
         
         snapshot.docChanges().forEach((change) => {
           const data = change.doc.data();
           const studentId = data.studentId;
           
           if (!studentId) {
-            console.warn('Received attendance record without studentId:', data);
+            
             return;
           }
           
           switch (change.type) {
             case 'added':
             case 'modified':
-              console.log(`📝 Student ${studentId} attendance updated:`, data);
+              
               // Update local attendance state
               attendance[studentId] = true;
               attendanceTime[studentId] = data.timestamp?.toDate?.() || data.markedAt?.toDate?.() || new Date();
@@ -2221,16 +2210,16 @@ function startListeningToAttendance() {
               const student = students.find(s => s.id.toString() === studentId);
               if (student) {
                 updateAttendance(studentId, 'present', attendanceTime[studentId]);
-                console.log(`✅ ${student.name || studentId} marked present`);
+                
               }
               break;
               
             case 'removed':
-              console.log(`🗑️ Student ${studentId} attendance removed`);
+              
               delete attendance[studentId];
               delete attendanceTime[studentId];
               updateAttendance(studentId, 'absent', null);
-              console.log(`❌ ${data.name || studentId} attendance removed`);
+              
               break;
           }
         });
@@ -2241,14 +2230,14 @@ function startListeningToAttendance() {
       },
       (error) => {
         // Error callback
-        console.warn('⚠️ Online listener failed, falling back to offline mode:', error);
+        
         loadOfflineAttendance();
         updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
         showNotification('Connection issues. Working in offline mode.', 'error');
       }
     );
   } catch (error) {
-    console.warn('⚠️ Error setting up online listener, using offline mode:', error);
+    
     loadOfflineAttendance();
     updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
     showNotification('Working in offline mode. Data will sync when back online.', 'warning');
@@ -2473,7 +2462,7 @@ async function exportToExcel() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (err) {
-    console.error('XLSX export failed:', err);
+    
     alert('Failed to export Excel file. Please try again.');
   }
 }
@@ -2587,7 +2576,7 @@ async function downloadAttendancePdf() {
     // Use html2pdf to save
     await html2pdf().from(container).set(opt).save();
   } catch (e) {
-    console.error('PDF download failed, falling back to print:', e);
+    
     // Fallback to print
     try { printAttendance(); } catch (_) {}
   }
@@ -2702,7 +2691,7 @@ window.testExpiredSession = function() {
   
   // Navigate to test URL
   const testUrl = window.location.href.split('?')[0] + '?session=' + testSessionId;
-  console.log('Test expired session URL:', testUrl);
+  
   
   // Optionally open in new tab
   if (confirm('Open test expired session in new tab?')) {
@@ -2752,7 +2741,7 @@ function printTableAsIs() {
     w.document.write(doc);
     w.document.close();
   } catch (err) {
-    console.error('Print as-is failed', err);
+    
     alert('Unable to print the table.');
   }
 }
@@ -2763,27 +2752,27 @@ window.printAttendance = printAttendance;
 window.printTableAsIs = printTableAsIs;
 
 async function showStudentCheckin(sessionParam) {
-  console.log('🔍 Loading session data for:', sessionParam);
+  
   let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
   
   // If we have a valid cached session, use it temporarily while validating from server
   if (session && session.sessionId === sessionParam) {
-    console.log('📦 Found cached session data');
+    
     
     // If session appears expired in cache, still try to validate from server first
     // This handles cases where local clock is wrong or cache is stale
     if (isSessionExpired(session)) {
-      console.log('⚠️ Session appears expired in cache, validating from server...');
+      
       
       // If Firebase is initialized, validate from server before showing expiry
       if (firebaseInitialized) {
         try {
-          console.log('🌐 Fetching fresh session data from Firestore to verify expiry');
+          
           const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
           
           if (doc.exists) {
             const freshSession = doc.data();
-            console.log('✅ Fresh session data loaded from Firestore for validation');
+            
             
             // Convert Firestore Timestamp to proper format
             if (freshSession.expiryTime && typeof freshSession.expiryTime.toDate === 'function') {
@@ -2797,30 +2786,30 @@ async function showStudentCheckin(sessionParam) {
             
             // Now check expiry with fresh data
             if (isSessionExpired(freshSession)) {
-              console.log('❌ Session confirmed expired from server');
+              
               displayExpiredSessionMessage();
               return;
             } else {
-              console.log('✅ Session is actually valid - cache was stale');
+              
               session = freshSession;
               displayStudentCheckin(session);
               return;
             }
           } else {
-            console.log('❌ Session not found on server');
+            
             showError('Session not found or has expired');
             return;
           }
         } catch (error) {
-          console.error('❌ Error validating session from server:', error);
+          
           // If server check fails, fall back to cached session expiry
-          console.log('🔄 Server validation failed, using cached expiry result');
+          
           displayExpiredSessionMessage();
           return;
         }
       } else {
         // Firebase not initialized, fall back to cached expiry check
-        console.log('🔌 Firebase not initialized, using cached expiry result');
+        
         displayExpiredSessionMessage();
         return;
       }
@@ -2828,7 +2817,7 @@ async function showStudentCheckin(sessionParam) {
     
     // For cached sessions without expiry, force refresh from Firestore
     if (!session.expiryTime && firebaseInitialized) {
-      console.log('🔄 Cached session missing expiry, refreshing from Firestore...');
+      
       // Skip cached session and use Firestore instead
     } else {
       displayStudentCheckin(session);
@@ -2844,12 +2833,12 @@ async function showStudentCheckin(sessionParam) {
   // If we don't have a valid session, try to load from Firestore
   if (firebaseInitialized) {
     try {
-      console.log('🌐 Fetching session data from Firestore');
+      
       const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
       
       if (doc.exists) {
         session = doc.data();
-        console.log('✅ Session data loaded from Firestore:', session);
+        
         
         // Convert Firestore Timestamp to proper format before expiry check
         if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
@@ -2873,18 +2862,18 @@ async function showStudentCheckin(sessionParam) {
         showError('Session not found or has expired');
       }
     } catch (error) {
-      console.error('❌ Error loading session:', error);
+      
       showError('Unable to load session. Please check your connection and try again.');
     }
   } else {
     // Wait for Firebase to initialize
-    console.log('🔌 Waiting for Firebase to initialize...');
+    
     try {
       await initializeFirebase();
       // Once Firebase is initialized, try loading the session again
       await showStudentCheckin(sessionParam);
     } catch (error) {
-      console.error('❌ Failed to initialize Firebase:', error);
+      
       showError('Unable to connect to the server. Please check your internet connection and refresh the page.');
     }
   }
@@ -2895,7 +2884,7 @@ async function updateSessionFromFirestore(sessionParam) {
     const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
     if (doc.exists) {
       let session = doc.data();
-      console.log('🔄 Updated session data from Firestore');
+      
       
       // Convert Firestore Timestamp to proper format for consistency
       if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
@@ -2907,7 +2896,7 @@ async function updateSessionFromFirestore(sessionParam) {
       localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
     }
   } catch (error) {
-    console.warn('⚠️ Could not update session from Firestore:', error);
+    
   }
 }
 
@@ -2967,7 +2956,7 @@ function displayExpiredSessionMessage() {
 }
 
 async function displayStudentCheckin(session) {
-  console.log('🎯 Displaying student check-in for session:', session.sessionId);
+  
   
   // Check if session is expired
   if (isSessionExpired(session)) {
@@ -3075,7 +3064,7 @@ async function displayStudentCheckin(session) {
     
     // If Firebase is not initialized, bypass location verification
     if (!firebaseInitialized) {
-      console.log('Firebase not initialized, bypassing location verification');
+      
       window.locationVerified = true;
       
       if (submitBtn) {
@@ -3098,7 +3087,7 @@ async function displayStudentCheckin(session) {
       }
     }
   } catch (error) {
-    console.error('Error during location check:', error);
+    
     if (messageDiv) {
       setMessage(messageDiv, 'error', 'Error checking location. Please ensure location services are enabled and refresh the page.');
     }
@@ -3173,22 +3162,22 @@ async function submitAttendance() {
     if (sessionData) {
       // If found in localStorage, use it
       session = JSON.parse(sessionData);
-      console.log('Found session in localStorage:', session);
+      
       
       // If session exists but is missing secretCode, try to get fresh data
       if (!session.secretCode) {
-        console.log('Local session missing secretCode, fetching from Firestore...');
+        
         const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
         if (sessionDoc.exists) {
           session = sessionDoc.data();
-          console.log('Updated session from Firestore:', session);
+          
           // Update localStorage with fresh data
           localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
         }
       }
     } else {
       // If not in localStorage, try to fetch from Firestore
-      console.log('Session not in localStorage, fetching from Firestore...');
+      
       const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
       
       if (!sessionDoc.exists) {
@@ -3196,7 +3185,7 @@ async function submitAttendance() {
       }
       
       session = sessionDoc.data();
-      console.log('Fetched session from Firestore:', session);
+      
       
       // Save to localStorage for future use
       localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
@@ -3208,11 +3197,11 @@ async function submitAttendance() {
     }
     
     if (!session.secretCode) {
-      console.error('Session is missing secretCode:', session);
+      
       throw new Error('This session is not properly configured. Please contact your teacher.');
     }
   } catch (error) {
-    console.error('Error loading session:', error);
+    
     showError('Session configuration error. Please contact your teacher or try again later.');
     // Re-enable form on validation error
     if (submitBtn) {
@@ -3346,7 +3335,7 @@ async function submitAttendance() {
         return;
       }
     } catch (error) {
-      console.error('Error checking attendance status:', error);
+      
       // Continue with submission if we can't verify from server
     }
     
@@ -3433,7 +3422,7 @@ async function submitAttendance() {
         // Commit the batch
         await batch.commit();
         
-        console.log('Attendance recorded for student:', mappedStudentId);
+        
         
       // Update local storage to prevent duplicate submissions
       localStorage.setItem(attendanceKey, 'true');
@@ -3474,7 +3463,7 @@ async function submitAttendance() {
       }, 5000);
       
     } catch (error) {
-      console.error('Error saving attendance:', error);
+      
       
       // Fallback to local storage if Firestore fails
       const localId = 'local_' + Date.now();
@@ -3518,7 +3507,7 @@ async function submitAttendance() {
       }
     }
   } catch (error) {
-    console.error('Error in submitAttendance:', error);
+    
     if (messageDiv) { setMessage(messageDiv, 'error', `❌ An error occurred while processing your request. Please try again later. ${error.message ? error.message : ''}`); }
     if (submitBtn) {
       submitBtn.disabled = false;

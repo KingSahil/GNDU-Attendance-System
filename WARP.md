@@ -188,10 +188,10 @@ The application includes hardcoded timetable data for automatic teacher/time det
 testExpiry()
 
 // Check current attendance data
-console.log(attendance, attendanceTime)
+(attendance, attendanceTime)
 
 // Verify student data loading
-console.log(students.length, 'students loaded')
+(students.length, 'students loaded')
 ```
 
 **Common Issues:**
