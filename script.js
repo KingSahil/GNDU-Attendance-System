@@ -44,28 +44,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const view = urlParams.get('view');
 
   if (sessionId) {
-    // If there's a session ID, check expiry immediately
-    console.log('Found session ID, checking expiry...');
+    // If there's a session ID, show check-in page and validate session
+    console.log('Found session ID, loading check-in page...');
     
-    // Check local storage first for immediate expiry check
-    const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
-    if (cachedSession && isSessionExpired(cachedSession)) {
-      console.log('❌ Session is expired from cache, showing expiry message');
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      displayExpiredSessionMessage();
-    } else {
-      console.log('✅ Session appears valid, showing check-in page');
-      // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
-      // without assuming any auth state
-      // The canonical handlePageDisplay is defined later and will run after auth change
-      // events; here we just reflect the session view immediately.
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('teacherDashboard').style.display = 'none';
-      document.getElementById('studentCheckin').style.display = 'block';
-      showStudentCheckin(sessionId);
-    }
+    // Always show the check-in page first, then validate session from server
+    // This prevents immediate expiry from potentially stale cache data
+    console.log('✅ Showing check-in page, will validate session from server');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'block';
+    showStudentCheckin(sessionId);
   } else if (view === 'student') {
     // On refresh with student details URL, go to homepage instead
     console.log('Student details view on refresh: redirecting to dashboard/homepage');
@@ -2729,13 +2717,64 @@ async function showStudentCheckin(sessionParam) {
   console.log('🔍 Loading session data for:', sessionParam);
   let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
   
-  // If we have a valid cached session, use it immediately
+  // If we have a valid cached session, use it temporarily while validating from server
   if (session && session.sessionId === sessionParam) {
-    console.log('📦 Using cached session data');
-    // Check if session is expired before displaying
+    console.log('📦 Found cached session data');
+    
+    // If session appears expired in cache, still try to validate from server first
+    // This handles cases where local clock is wrong or cache is stale
     if (isSessionExpired(session)) {
-      displayExpiredSessionMessage();
-      return;
+      console.log('⚠️ Session appears expired in cache, validating from server...');
+      
+      // If Firebase is initialized, validate from server before showing expiry
+      if (firebaseInitialized) {
+        try {
+          console.log('🌐 Fetching fresh session data from Firestore to verify expiry');
+          const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
+          
+          if (doc.exists) {
+            const freshSession = doc.data();
+            console.log('✅ Fresh session data loaded from Firestore for validation');
+            
+            // Convert Firestore Timestamp to proper format
+            if (freshSession.expiryTime && typeof freshSession.expiryTime.toDate === 'function') {
+              freshSession.expiryTime = freshSession.expiryTime.toDate().toISOString();
+            } else if (freshSession.expiryTime && typeof freshSession.expiryTime.seconds === 'number') {
+              freshSession.expiryTime = new Date(freshSession.expiryTime.seconds * 1000).toISOString();
+            }
+            
+            // Update cache with fresh data
+            localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(freshSession));
+            
+            // Now check expiry with fresh data
+            if (isSessionExpired(freshSession)) {
+              console.log('❌ Session confirmed expired from server');
+              displayExpiredSessionMessage();
+              return;
+            } else {
+              console.log('✅ Session is actually valid - cache was stale');
+              session = freshSession;
+              displayStudentCheckin(session);
+              return;
+            }
+          } else {
+            console.log('❌ Session not found on server');
+            showError('Session not found or has expired');
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Error validating session from server:', error);
+          // If server check fails, fall back to cached session expiry
+          console.log('🔄 Server validation failed, using cached expiry result');
+          displayExpiredSessionMessage();
+          return;
+        }
+      } else {
+        // Firebase not initialized, fall back to cached expiry check
+        console.log('🔌 Firebase not initialized, using cached expiry result');
+        displayExpiredSessionMessage();
+        return;
+      }
     }
     
     // For cached sessions without expiry, force refresh from Firestore
@@ -3031,6 +3070,7 @@ async function displayStudentCheckin(session) {
 async function submitAttendance() {
   // Gather inputs and helpers
   const urlSessionId = new URLSearchParams(window.location.search).get('session') || (currentSession && currentSession.sessionId) || sessionId || '';
+  const isLoggedIn = auth && auth.currentUser;
   const secretCodeInput = document.getElementById('secretCodeInput')?.value?.trim().toUpperCase();
   const studentId = document.getElementById('studentId')?.value?.trim(); // Roll Number input
   const studentName = document.getElementById('studentName')?.value?.trim();
@@ -3207,7 +3247,27 @@ async function submitAttendance() {
     
     // Check if already marked present in this session (both locally and on server)
     const attendanceKey = `attendance_${urlSessionId}_${mappedStudentId}`;
-    const localAttendance = localStorage.getItem(attendanceKey) === 'true';
+    const localAttendanceBool = localStorage.getItem(attendanceKey) === 'true';
+    let localAttendanceObj = {};
+    try { localAttendanceObj = JSON.parse(localStorage.getItem(attendanceKey) || '{}'); } catch (_) { localAttendanceObj = {}; }
+    
+    // IP address verification for non-logged-in users
+    if (!isLoggedIn) {
+      // Create a key for this session using IP address hash to prevent multiple attendance marks
+      const deviceKey = `device_${urlSessionId}`;
+      const deviceVerification = localStorage.getItem(deviceKey);
+      
+      if (deviceVerification) {
+        showError('❌ Your device can mark attendance only one time per session. If you need to update your attendance, please contact your teacher.');
+        // Disable the form since this device already marked attendance
+        if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Limited to One Attendance';
+        }
+        return;
+      }
+    }
     
     // Check server for existing attendance
     try {
@@ -3222,7 +3282,7 @@ async function submitAttendance() {
       const isMarkedInSession = sessionData.attendance && sessionData.attendance[mappedStudentId] === true;
       const hasAttendanceRecord = attendanceDoc.exists;
       
-      if (localAttendance || isMarkedInSession || hasAttendanceRecord) {
+      if (localAttendanceBool || isMarkedInSession || hasAttendanceRecord) {
         showError('✅ Your attendance is already marked as present for this session.');
         // Disable the form since attendance is already marked
         if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
@@ -3231,7 +3291,7 @@ async function submitAttendance() {
           submitBtn.textContent = 'Already Marked Present';
         }
         // Update local storage in case it was missing
-        if (!localAttendance) {
+        if (!localAttendanceBool) {
           localStorage.setItem(attendanceKey, 'true');
         }
         return;
@@ -3326,21 +3386,27 @@ async function submitAttendance() {
         
         console.log('Attendance recorded for student:', mappedStudentId);
         
-        // Update local storage to prevent duplicate submissions
-        localStorage.setItem(attendanceKey, 'true');
+      // Update local storage to prevent duplicate submissions
+      localStorage.setItem(attendanceKey, 'true');
+      
+      // For non-logged-in users, mark this device as having submitted attendance for this session
+      if (!isLoggedIn) {
+        const deviceKey = `device_${urlSessionId}`;
+        localStorage.setItem(deviceKey, new Date().toISOString());
+      }
         
         // Show success message
         if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
       } else {
         // Firebase not initialized, save to local storage only
         const localId = 'local_' + Date.now();
-        localAttendance[student.id] = {
+        localAttendanceObj[student.id] = {
           ...attendanceData,
           id: localId,
           synced: false,
           timestamp: new Date().toISOString()
         };
-        localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
+        localStorage.setItem(attendanceKey, JSON.stringify(localAttendanceObj));
         
         if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded locally! ${student.name} (${student.id}) is marked present.`); }
       }
@@ -3363,13 +3429,25 @@ async function submitAttendance() {
       
       // Fallback to local storage if Firestore fails
       const localId = 'local_' + Date.now();
-      localAttendance[student.id] = {
+      localAttendanceObj[student.id] = {
         ...attendanceData,
         id: localId,
         synced: false,
         timestamp: new Date().toISOString()
       };
-      localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
+      localStorage.setItem(attendanceKey, JSON.stringify(localAttendanceObj));
+      
+      // For non-logged-in users, mark this device as having submitted attendance for this session
+      if (!isLoggedIn) {
+        const deviceKey = `device_${urlSessionId}`;
+        localStorage.setItem(deviceKey, new Date().toISOString());
+      }
+      
+      // For non-logged-in users, mark this device as having submitted attendance for this session
+      if (!isLoggedIn) {
+        const deviceKey = `device_${urlSessionId}`;
+        localStorage.setItem(deviceKey, new Date().toISOString());
+      }
       
       if (messageDiv) { setMessage(messageDiv, 'warning', '⚠️ Attendance saved offline. It will sync when online.'); }
       
