@@ -3205,14 +3205,53 @@ async function submitAttendance() {
       return;
     }
     
-    // Check if already marked attendance locally
-    const attendanceKey = 'attendance_' + urlSessionId;
-    const localAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
+    // Check if already marked present in this session (both locally and on server)
+    const attendanceKey = `attendance_${urlSessionId}_${mappedStudentId}`;
+    const localAttendance = localStorage.getItem(attendanceKey) === 'true';
     
-    if (localAttendance[student.id]) {
-      showError('You have already marked your attendance for this session.');
-      if (submitBtn) submitBtn.disabled = true;
+    // Check server for existing attendance
+    try {
+      // Check both the session document and the attendance subcollection
+      const [sessionDoc, attendanceDoc] = await Promise.all([
+        db.collection('attendanceSessions').doc(urlSessionId).get(),
+        db.collection('attendanceSessions').doc(urlSessionId)
+          .collection('attendance').doc(mappedStudentId).get()
+      ]);
+      
+      const sessionData = sessionDoc.exists ? sessionDoc.data() : {};
+      const isMarkedInSession = sessionData.attendance && sessionData.attendance[mappedStudentId] === true;
+      const hasAttendanceRecord = attendanceDoc.exists;
+      
+      if (localAttendance || isMarkedInSession || hasAttendanceRecord) {
+        showError('✅ Your attendance is already marked as present for this session.');
+        // Disable the form since attendance is already marked
+        if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Already Marked Present';
+        }
+        // Update local storage in case it was missing
+        if (!localAttendance) {
+          localStorage.setItem(attendanceKey, 'true');
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking attendance status:', error);
+      // Continue with submission if we can't verify from server
+    }
+    
+    // Check old local storage format for backward compatibility
+    const oldLocalAttendance = JSON.parse(localStorage.getItem('attendance_' + urlSessionId) || '{}');
+    if (oldLocalAttendance[mappedStudentId]) {
+      showError('✅ Your attendance is already marked as present for this session.');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Already Marked Present';
+      }
       if (form) form.querySelectorAll('input').forEach(input => input.disabled = true);
+      // Update to new storage format
+      localStorage.setItem(attendanceKey, 'true');
       return;
     }
     
@@ -3261,22 +3300,34 @@ async function submitAttendance() {
     try {
       // Check if Firebase is initialized
       if (firebaseInitialized && typeof db !== 'undefined') {
-        // Save to Firestore
-        const docRef = await db.collection('attendanceSessions')
-          .doc(urlSessionId)
-          .collection('attendance')
-          .add(attendanceData);
+        const batch = db.batch();
+        const sessionRef = db.collection('attendanceSessions').doc(urlSessionId);
         
-        console.log('Attendance recorded with ID: ', docRef.id);
+        // Update the attendance map in the session document
+        const updateData = {
+          [`attendance.${mappedStudentId}`]: true,
+          [`attendanceTime.${mappedStudentId}`]: firebase.firestore.FieldValue.serverTimestamp(),
+          [`attendanceRecords.${mappedStudentId}`]: attendanceData,
+          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        // Add the update to the batch
+        batch.update(sessionRef, updateData);
+        
+        // Also add to the attendance subcollection for detailed records
+        const attendanceRef = sessionRef.collection('attendance').doc(mappedStudentId);
+        batch.set(attendanceRef, {
+          ...attendanceData,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        // Commit the batch
+        await batch.commit();
+        
+        console.log('Attendance recorded for student:', mappedStudentId);
         
         // Update local storage to prevent duplicate submissions
-        localAttendance[student.id] = {
-          ...attendanceData,
-          id: docRef.id,
-          synced: true,
-          timestamp: new Date().toISOString()
-        };
-        localStorage.setItem(attendanceKey, JSON.stringify(localAttendance));
+        localStorage.setItem(attendanceKey, 'true');
         
         // Show success message
         if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
