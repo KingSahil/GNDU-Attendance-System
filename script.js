@@ -656,11 +656,22 @@ async function loadStudentDetailsPage() {
     let studentName = null;
     let fatherName = null;
 
+    // Helper function to normalize subject names and remove duplicates
+    function normalizeSubjectName(subjectString) {
+      if (!subjectString) return 'General';
+      
+      // Remove course codes like "CEL1020 - ", "MTL1001 - ", "PHL1083 - ", etc.
+      const cleanName = subjectString.replace(/^[A-Z]{2,4}\d{4}\s*-\s*/i, '').trim();
+      
+      // Return the cleaned name or original if no course code was found
+      return cleanName || subjectString;
+    }
+
     for (const att of attendanceDocs) {
       const sid = att.sessionId || att.session || att._sessionId;
       const session = sessionById.get(sid);
-      const subjName = att.subjectName || (session && (session.subjectName || session.subject)) || (att.subjectCode || 'General');
-      const key = subjName;
+      const rawSubjName = att.subjectName || (session && (session.subjectName || session.subject)) || (att.subjectCode || 'General');
+      const key = normalizeSubjectName(rawSubjName);
       const entry = perSubject.get(key) || { total: 0, present: 0 };
       entry.present += 1; // presence indicated by doc existence
       perSubject.set(key, entry);
@@ -672,8 +683,9 @@ async function loadStudentDetailsPage() {
     // Compute total sessions per subject across sessions
     const subjectSessionCounts = new Map();
     for (const s of sessions) {
-      const subj = s.subjectName || s.subject || s.subjectCode || 'General';
-      subjectSessionCounts.set(subj, (subjectSessionCounts.get(subj) || 0) + 1);
+      const rawSubj = s.subjectName || s.subject || s.subjectCode || 'General';
+      const normalizedSubj = normalizeSubjectName(rawSubj);
+      subjectSessionCounts.set(normalizedSubj, (subjectSessionCounts.get(normalizedSubj) || 0) + 1);
     }
     for (const [subject, total] of subjectSessionCounts.entries()) {
       const entry = perSubject.get(subject) || { total: 0, present: 0 };
@@ -1157,6 +1169,37 @@ function findTeacherAndTime(date, subjectCode) {
   };
 }
 
+// Helper function to safely format expiry time
+function formatExpiryTime(expiryTime) {
+  if (!expiryTime) return 'N/A';
+  
+  try {
+    let date;
+    if (expiryTime && typeof expiryTime.toDate === 'function') {
+      // Firestore Timestamp object
+      date = expiryTime.toDate();
+    } else if (typeof expiryTime === 'string') {
+      // ISO string
+      date = new Date(expiryTime);
+    } else if (expiryTime && typeof expiryTime.seconds === 'number') {
+      // Firestore Timestamp in plain object format
+      date = new Date(expiryTime.seconds * 1000);
+    } else {
+      // Direct Date object or other format
+      date = new Date(expiryTime);
+    }
+    
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    return date.toLocaleString();
+  } catch (error) {
+    console.warn('Error formatting expiry time:', error);
+    return 'Invalid Date';
+  }
+}
+
 // Enhanced startAttendance with secret code
 // Test function to verify expiry - can be called from console: testExpiry()
 window.testExpiry = function() {
@@ -1429,7 +1472,7 @@ async function startAttendance() {
       <div class="secret-code-display">${sessionSecretCode}</div>
     </div>
     <div class="expiry-info" id="expiryInfo">
-      ${isExpired ? '<strong>⏰ Expired:</strong> This session has expired' : `<strong>⏰ Expires:</strong> ${new Date(currentSession.expiryTime).toLocaleString()}`}
+      ${isExpired ? '<strong>⏰ Expired:</strong> This session has expired' : `<strong>⏰ Expires:</strong> ${formatExpiryTime(currentSession.expiryTime)}`}
     </div>
     ${isExpired ? '<div class="session-expired" id="sessionExpired">❌ Session Expired - Students can no longer mark attendance</div>' : ''}
   `;
@@ -1500,9 +1543,15 @@ async function restartSession() {
         <div class="secret-code-display">${newSession.secretCode}</div>
       </div>
       <div class="expiry-info" id="expiryInfo">
-        <strong>⏰ Expires:</strong> ${new Date(newSession.expiryTime).toLocaleString()}
+        <strong>⏰ Expires:</strong> ${expiryTime.toLocaleString()}
       </div>
     `;
+    
+    // Remove any existing expired session warning
+    const existingExpiredWarning = document.getElementById('sessionExpired');
+    if (existingExpiredWarning) {
+      existingExpiredWarning.remove();
+    }
 
     // Reset button back to expire
     const restartBtn = document.querySelector('.share-btn[onclick="restartSession()"]');
