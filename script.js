@@ -1,11 +1,3 @@
-// Firebase Configuration (provided by env.js at runtime)
-// For static sites, .env files are not available to the browser. We load
-// configuration from a non-committed env.js file instead. See env.example.js.
-
-// script.js (uses Firebase v9 compat via CDN included in index.html)
-
-
-// Use the configuration from config.js
 const firebaseConfig = window.firebaseConfig || {
   apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
   authDomain: "gndu-attendance-system.firebaseapp.com",
@@ -29,10 +21,6 @@ let attendanceTime = {};
 let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
-// Students array is loaded from student.js
-
-// NOTE: handlePageDisplay is defined later in the file with enhanced logic.
-// Keeping a single implementation to avoid conflicts.
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
@@ -75,7 +63,6 @@ document.addEventListener('DOMContentLoaded', function() {
       showLoginScreen();
     }
 
-// (moved) helper functions are declared in global scope below
   }
   
   // Initialize Firebase in the background
@@ -282,7 +269,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
 const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 1000000000;  // 100 meters radius
+const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
 
 // Timetable data
 const timetable = {
