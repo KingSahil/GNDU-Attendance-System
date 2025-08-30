@@ -280,8 +280,8 @@ async function loadStudentsFromFirestore() {
 }
 
 // Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.648496;  // GNDU latitude
-const UNIVERSITY_LNG = 74.817549;  // GNDU longitude
+const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
+const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
 const ALLOWED_RADIUS_METERS = 1000;  // 100 meters radius
 
 // Timetable data
