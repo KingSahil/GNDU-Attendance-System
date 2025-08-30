@@ -37,7 +37,7 @@ A modern, web-based attendance management system designed for Guru Nanak Dev Uni
 
 1. Clone the repository:
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/KingSahil/GNDU-Attendance-System.git
    ```
 
 2. Configure Firebase:
