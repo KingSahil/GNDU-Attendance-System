@@ -219,25 +219,50 @@ function initializeFirebase() {
   });
 }
 
+// Track if students are already being loaded
+let isStudentsLoading = false;
+
 // Load students from Firestore (one-time fetch)
 async function loadStudentsFromFirestore() {
+  // If already loading or already loaded, return
+  if (isStudentsLoading || students.length > 0) {
+    console.log('Students already loaded or loading in progress');
+    return;
+  }
+
+  isStudentsLoading = true;
+  
   try {
     if (!db) {
       console.warn('Firestore not initialized yet');
+      isStudentsLoading = false;
       return;
     }
-    const snapshot = await db.collection('students').orderBy('name').get();
+    
+    console.log('Fetching students from Firestore...');
+    const snapshot = await db.collection('students').orderBy('name').get({
+      source: 'server'  // Force server fetch to avoid cache issues
+    });
+    
     // Clear existing students and add new ones
     students.length = 0;
-    const firestoreStudents = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: data.id,
-        name: data.name,
-        father: data.father,
-        class_group_no: data.class_group_no,
-        lab_group_no: data.lab_group_no
-      };
+    const firestoreStudents = [];
+    
+    snapshot.docs.forEach(doc => {
+      try {
+        const data = doc.data();
+        if (data && data.id) {
+          firestoreStudents.push({
+            id: data.id,
+            name: data.name || '',
+            father: data.father || '',
+            class_group_no: data.class_group_no || 0,
+            lab_group_no: data.lab_group_no || 0
+          });
+        }
+      } catch (e) {
+        console.warn('Error processing student document:', e);
+      }
     });
     
     // Ensure Jatin (id: 17032400065) is always at the end
@@ -248,14 +273,21 @@ async function loadStudentsFromFirestore() {
     }
     
     students.push(...firestoreStudents);
-    console.log(`✅ Loaded ${students.length} students from Firestore`);
+    console.log(`✅ Successfully loaded ${students.length} students from Firestore`);
+    
+    // Update UI
     const loadingMsg = document.getElementById('loadingMessage');
     if (loadingMsg) loadingMsg.style.display = 'none';
+    
     // Revalidate the form to enable Start button if needed
-    if (document.getElementById('startBtn')) validateForm();
+    if (document.getElementById('startBtn')) {
+      validateForm();
+    }
   } catch (e) {
     console.error('Failed to load students from Firestore:', e);
     updateFirebaseStatus('🔴 Failed to load students from Firestore', 'error');
+  } finally {
+    isStudentsLoading = false;
   }
 }
 
@@ -2757,32 +2789,16 @@ async function showStudentCheckin(sessionParam) {
       showError('Unable to load session. Please check your connection and try again.');
     }
   } else {
-    // Create a temporary session object for student links when Firebase is not initialized
-    // This allows student links to work without requiring login
-    console.log('Firebase not initialized, creating temporary session');
-    const tempSession = {
-      sessionId: sessionParam,
-      date: new Date().toLocaleDateString('en-GB'),
-      subjectName: 'Attendance Session',
-      teacherName: 'Teacher',
-      timeSlot: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-      secretCode: '',
-      // Add expiry to temporary sessions too (1 hour from creation)
-      expiryTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      isExpired: false
-    };
-    
-    // Check if temporary session is expired
-    if (isSessionExpired(tempSession)) {
-      displayExpiredSessionMessage();
-      return;
+    // Wait for Firebase to initialize
+    console.log('🔌 Waiting for Firebase to initialize...');
+    try {
+      await initializeFirebase();
+      // Once Firebase is initialized, try loading the session again
+      await showStudentCheckin(sessionParam);
+    } catch (error) {
+      console.error('❌ Failed to initialize Firebase:', error);
+      showError('Unable to connect to the server. Please check your internet connection and refresh the page.');
     }
-    
-    // Display the check-in form with the temporary session
-    displayStudentCheckin(tempSession);
-    
-    // Store this temporary session in localStorage for future use
-    localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(tempSession));
   }
 }
 
