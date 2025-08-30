@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GNDU Attendance System - Computer Engineering & Technology</title>
   <!-- Basic Content Security Policy -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com https://*.firebasestorage.app; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.firebaseapp.com https://*.firebasestorage.app; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-src 'self' https://*.firebaseapp.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'self';">
   
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -14,54 +14,10 @@
   
   <!-- External CSS -->
   <link rel="stylesheet" href="styles.css">
-  <style>
-    /* Hide login screen by default */
-    .login-container {
-      display: none !important;
-    }
-    /* Show login screen only when explicitly enabled */
-    body.login-view .login-container {
-      display: flex !important;
-    }
-    /* Hide login screen on student check-in page */
-    body.student-checkin-page .login-container {
-      display: none !important;
-    }
-  </style>
-  <script>
-    // Set initial body class before DOM is fully loaded to prevent flash
-    (function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session');
-      
-      // Set the appropriate class immediately
-      if (sessionId) {
-        document.documentElement.classList.add('student-checkin-page');
-      } else {
-        document.documentElement.classList.add('login-view');
-      }
-    })();
-  </script>
   
-
+  <!-- Environment Configuration is loaded from .env file -->
 </head>
 <body>
-  <script>
-    // This script runs after the initial class is set in the head
-    document.addEventListener('DOMContentLoaded', function() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session');
-      
-      // Remove the initial class from html and add to body
-      if (document.documentElement.classList.contains('student-checkin-page')) {
-        document.documentElement.classList.remove('student-checkin-page');
-        document.body.classList.add('student-checkin-page');
-      } else if (document.documentElement.classList.contains('login-view')) {
-        document.documentElement.classList.remove('login-view');
-        document.body.classList.add('login-view');
-      }
-    }, { once: true });
-  </script>
   <!-- Login Screen -->
   <div class="login-container" id="loginScreen">
     <div class="login-header">
@@ -232,11 +188,11 @@
 
       <div class="form-group">
         <label for="studentId">Roll Number</label>
-        <input autocomplete="off" type="text" id="studentId" placeholder="Enter your Roll Number" required>
+        <input type="text" id="studentId" placeholder="Enter your Roll Number" required>
       </div>
       <div class="form-group">
         <label for="studentName">Full Name</label>
-        <input autocomplete="off" type="text" id="studentName" placeholder="Enter your Full Name" required>
+        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
       <button type="submit" class="checkin-btn" id="submitBtn" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>

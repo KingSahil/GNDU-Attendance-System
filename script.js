@@ -31,122 +31,63 @@ let sessionSecretCode = '';
 let checkinUrl = '';
 // Students array is loaded from student.js
 
-// Consolidated isSessionExpired function with improved logging
-function isSessionExpired(sessionData) {
-  try {
-    console.log('Checking session expiry for:', sessionData);
-    
-    // First check URL parameter (works for all users, including non-logged in)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('expired') === 'true') {
-      console.log('Session marked as expired via URL parameter');
-      return true;
-    }
-    
-    // If no session data, we can't determine if it's expired
-    if (!sessionData) {
-      console.log('No session data provided');
-      return false;
-    }
-    
-    // Check if session is explicitly marked as expired
-    if (sessionData.isExpired === true) {
-      console.log('Session explicitly marked as expired');
-      return true;
-    }
-    
-    // Check if expiry time has passed
-    if (sessionData.expiryTime) {
-      const now = new Date();
-      const expiryTime = new Date(sessionData.expiryTime);
-      const isExpired = now > expiryTime;
-      console.log(`Session expiry check: now=${now}, expiry=${expiryTime}, isExpired=${isExpired}`);
-      return isExpired;
-    }
-    
-    // For backward compatibility, check sessionStorage
-    try {
-      if (sessionStorage.getItem('sessionExpired') === 'true') {
-        console.log('Session marked as expired in sessionStorage');
-        return true;
-      }
-    } catch (e) {
-      console.log('Could not access sessionStorage (private browsing mode)');
-      // Ignore errors in private browsing mode
-    }
-    
-    console.log('Session is not expired');
-    return false;
-  } catch (error) {
-    console.error('Error checking session expiry:', error);
-    return false; // Default to not expired on error
-  }
-}
+// NOTE: handlePageDisplay is defined later in the file with enhanced logic.
+// Keeping a single implementation to avoid conflicts.
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function() {
-  // Immediately handle URL parameters to prevent any flicker
+  // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
+  
+  // Check for session or student view in URL first
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
   const view = urlParams.get('view');
-  
-  // Check for expired session in sessionStorage
-  const sessionIsExpired = sessionStorage.getItem('sessionExpired') === 'true';
-  
+
   if (sessionId) {
-    document.body.classList.add('student-checkin-page');
-    document.body.classList.remove('login-view');
+    // If there's a session ID, check expiry immediately
+    console.log('Found session ID, checking expiry...');
     
-    // If session is marked as expired, show expired message immediately
-    if (sessionIsExpired) {
-      displayExpiredSessionMessage();
-      return; // Stop further execution for expired sessions
-    }
-    
-    // Check local storage for session data and its expiry
+    // Check local storage first for immediate expiry check
     const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
     if (cachedSession && isSessionExpired(cachedSession)) {
+      console.log('❌ Session is expired from cache, showing expiry message');
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentCheckin').style.display = 'block';
       displayExpiredSessionMessage();
-      return; // Stop further execution for expired sessions
+    } else {
+      console.log('✅ Session appears valid, showing check-in page');
+      // Defer to handlePageDisplay after Firebase init too, but ensure UI is correct now
+      // without assuming any auth state
+      // The canonical handlePageDisplay is defined later and will run after auth change
+      // events; here we just reflect the session view immediately.
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentCheckin').style.display = 'block';
+      showStudentCheckin(sessionId);
     }
-  } else {
-    document.body.classList.add('login-view');
-    document.body.classList.remove('student-checkin-page');
-  }
-
-  // Get DOM elements
-  const loginScreen = document.getElementById('loginScreen');
-  const teacherDashboard = document.getElementById('teacherDashboard');
-  const studentCheckin = document.getElementById('studentCheckin');
-  const checkinForm = document.getElementById('checkinForm');
-  const loadingIndicator = document.getElementById('loadingIndicator');
-
-  // Safely hide/show elements if they exist
-  if (teacherDashboard) teacherDashboard.style.display = 'none';
-  if (studentCheckin) studentCheckin.style.display = 'none';
-
-  if (sessionId) {
-    // For student check-in, show loading state immediately
-    if (studentCheckin) studentCheckin.style.display = 'block';
-    if (checkinForm) checkinForm.style.display = 'none';
-    if (loadingIndicator) loadingIndicator.style.display = 'block';
-    
-    // Show student check-in immediately
-    showStudentCheckin(sessionId);
   } else if (view === 'student') {
-    // Handle student details view
+    // On refresh with student details URL, go to homepage instead
+    console.log('Student details view on refresh: redirecting to dashboard/homepage');
+    // Strip query and show dashboard; modal can be opened via click only
     if (window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     showDashboard();
   } else {
-    // Check for cached user to avoid login screen flicker
+    // Otherwise, optimistically show dashboard instantly if we have a cached user
+    // to avoid login screen flicker while Firebase initializes. Auth listener will
+    // correct the view if the session is actually invalid/expired.
     const cachedUser = localStorage.getItem('user');
     if (cachedUser) {
+      console.log('Cached user found, showing dashboard immediately');
       showDashboard();
     } else {
+      // Fall back to showing login screen
       showLoginScreen();
     }
+
+// (moved) helper functions are declared in global scope below
   }
   
   // Initialize Firebase in the background
@@ -189,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check local storage for expiry even when Firebase fails
         const cachedSession = JSON.parse(localStorage.getItem('attendanceSession_' + sessionId) || 'null');
         if (cachedSession && isSessionExpired(cachedSession)) {
-  
+          console.log('❌ Session is expired (Firebase failed), showing expiry message');
           document.getElementById('loginScreen').style.display = 'none';
           document.getElementById('teacherDashboard').style.display = 'none';
           document.getElementById('studentCheckin').style.display = 'block';
@@ -233,18 +174,18 @@ function initializeFirebase() {
       db = firebase.firestore();
       auth = firebase.auth();
       
-      
+      console.log('Firebase initialized successfully');
       
       // Set auth persistence
       auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
         .then(() => {
-  
+          console.log('Auth persistence set to LOCAL');
           
           // Enable offline persistence for Firestore
           return db.enablePersistence({ experimentalForceOwningTab: true });
         })
         .then(() => {
-  
+          console.log('Firebase persistence enabled');
           
           // Enable network but don't fail if offline
           return db.enableNetwork().catch(err => {
@@ -253,7 +194,7 @@ function initializeFirebase() {
           });
         })
         .then(() => {
-  
+          console.log('Firebase initialization complete');
           firebaseInitialized = true;
           updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
           resolve();
@@ -307,7 +248,7 @@ async function loadStudentsFromFirestore() {
     }
     
     students.push(...firestoreStudents);
-    
+    console.log(`✅ Loaded ${students.length} students from Firestore`);
     const loadingMsg = document.getElementById('loadingMessage');
     if (loadingMsg) loadingMsg.style.display = 'none';
     // Revalidate the form to enable Start button if needed
@@ -319,9 +260,9 @@ async function loadStudentsFromFirestore() {
 }
 
 // Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.649548 ;  // GNDU latitude
-const UNIVERSITY_LNG = 74.818523 ;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 100000000;  // 100 meters radius
+const UNIVERSITY_LAT = 31.648496;  // GNDU latitude
+const UNIVERSITY_LNG = 74.817549;  // GNDU longitude
+const ALLOWED_RADIUS_METERS = 1000;  // 100 meters radius
 
 // Timetable data
 const timetable = {
@@ -372,7 +313,7 @@ const subjectNames = {
 
 // Firebase Authentication functions
 window.handleLogin = async function() {
-  
+  console.log('Login button clicked');
   
   // Check if auth is initialized
   if (!auth) {
@@ -399,12 +340,12 @@ window.handleLogin = async function() {
   if (messageDiv) { clearElement(messageDiv); }
 
   try {
-    
+    console.log('Attempting to sign in with email:', email);
     // Sign in with email and password
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
     
-    
+    console.log('Login successful for user:', user.email);
     
     if (messageDiv) { setMessage(messageDiv, 'success', '✅ Login successful! Redirecting...'); }
     
@@ -466,29 +407,9 @@ async function handleLogout() {
       }
       
       // Show login screen and hide others
-      document.body.classList.add('login-view');
-      document.body.classList.remove('student-checkin-page');
-      
+      document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('teacherDashboard').style.display = 'none';
       document.getElementById('studentCheckin').style.display = 'none';
-      
-      // Clear any error messages
-      const errorElement = document.getElementById('loginError');
-      if (errorElement) {
-        errorElement.textContent = '';
-      }
-      
-      // Clear form fields
-      const loginForm = document.getElementById('loginForm');
-      if (loginForm) {
-        loginForm.reset();
-      }
-      
-      // Set focus to email field
-      const emailInput = document.getElementById('email');
-      if (emailInput) {
-        emailInput.focus();
-      }
       
       // Reset any other UI elements if needed
       const statusElement = document.getElementById('firebaseStatus');
@@ -496,7 +417,7 @@ async function handleLogout() {
         statusElement.textContent = '🔄 Connecting to Firebase...';
       }
       
-      
+      console.log('User signed out successfully');
     } catch (error) {
       console.error('Error signing out:', error);
       alert('Error signing out. Please try again.');
@@ -510,32 +431,14 @@ function showLoginScreen() {
   const sessionId = urlParams.get('session');
   
   if (!sessionId) {
-    // Update body classes
-    document.body.classList.add('login-view');
-    document.body.classList.remove('dashboard-view', 'student-checkin-page', 'modal-open');
-    
-    // Update UI elements
-    const loginScreen = document.getElementById('loginScreen');
-    const teacherDashboard = document.getElementById('teacherDashboard');
-    const studentCheckin = document.getElementById('studentCheckin');
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('teacherDashboard').style.display = 'none';
+    document.getElementById('studentCheckin').style.display = 'none';
     const modal = document.getElementById('studentDetailsModal');
-    
-    if (loginScreen) loginScreen.style.display = 'flex';
-    if (teacherDashboard) teacherDashboard.style.display = 'none';
-    if (studentCheckin) studentCheckin.style.display = 'none';
     if (modal) modal.style.display = 'none';
-    
-    // Clear any error messages
-    const errorElement = document.getElementById('loginError');
-    if (errorElement) errorElement.textContent = '';
-    
-    // Clear form fields
-    const loginForm = document.getElementById('loginForm');
-    if (loginForm) loginForm.reset();
-    
-    // Set focus to email field
-    const emailInput = document.getElementById('email');
-    if (emailInput) emailInput.focus();
+    document.body.classList.remove('modal-open');
+    document.body.classList.remove('dashboard-view', 'student-checkin-page');
+    document.body.classList.add('login-view');
   }
 }
 
@@ -545,20 +448,14 @@ function showDashboard() {
   const sessionId = urlParams.get('session');
   
   if (!sessionId) {
-    // Update body classes
-    document.body.classList.add('dashboard-view');
-    document.body.classList.remove('login-view', 'student-checkin-page', 'modal-open');
-    
-    // Update UI elements
-    const loginScreen = document.getElementById('loginScreen');
-    const teacherDashboard = document.getElementById('teacherDashboard');
-    const studentCheckin = document.getElementById('studentCheckin');
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('teacherDashboard').style.display = 'block';
+    document.getElementById('studentCheckin').style.display = 'none';
     const modal = document.getElementById('studentDetailsModal');
-    
-    if (loginScreen) loginScreen.style.display = 'none';
-    if (teacherDashboard) teacherDashboard.style.display = 'block';
-    if (studentCheckin) studentCheckin.style.display = 'none';
     if (modal) modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+    document.body.classList.remove('login-view', 'student-checkin-page');
+    document.body.classList.add('dashboard-view');
     
     // Reset the URL to remove any session parameters
     if (window.history.replaceState) {
@@ -574,30 +471,22 @@ function handlePageDisplay(user) {
   const sessionId = urlParams.get('session');
   const view = urlParams.get('view');
   
-  // Update body classes based on current state
+  // If we're on a student check-in page, show it regardless of auth state
   if (sessionId) {
-    document.body.classList.add('student-checkin-page');
-    document.body.classList.remove('login-view', 'dashboard-view');
-  } else if (user) {
-    document.body.classList.add('dashboard-view');
-    document.body.classList.remove('login-view', 'student-checkin-page');
-  } else {
-    document.body.classList.add('login-view');
-    document.body.classList.remove('dashboard-view', 'student-checkin-page');
+    console.log('Auth state changed, showing student check-in page for session:', sessionId);
+    showStudentCheckin(sessionId);
+    return;
   }
-  
-  // If we're on a student check-in page, do NOT change the view based on auth state
-  // This prevents flicker when Firebase auth initializes
-  if (sessionId) {
-    return; // Keep student check-in visible regardless of auth state
-  }
-  
-  // If student details view is requested
+  // If student details view is requested (only open if already in modal-open state)
   if (view === 'student') {
     if (document.body.classList.contains('modal-open')) {
+      console.log('Auth state changed, keeping student details modal open');
       document.getElementById('studentDetailsModal').style.display = 'flex';
+      // Load student details
       loadStudentDetailsPage().catch(() => {});
     } else {
+      // Do not auto-open modal on refresh; go to dashboard instead
+      console.log('Auth state changed with student view on refresh, showing dashboard');
       showDashboard();
     }
     return;
@@ -605,8 +494,10 @@ function handlePageDisplay(user) {
   
   // Otherwise handle normal auth flow
   if (user) {
+    console.log('User is signed in, showing dashboard');
     showDashboard();
   } else {
+    console.log('User is signed out, showing login screen');
     showLoginScreen();
   }
 }
@@ -771,9 +662,9 @@ async function loadStudentDetailsPage() {
     }
 
     // Debug log student data
-    
-    
-    
+    console.log('Students array length:', students?.length || 0);
+    console.log('Looking for student ID:', studentId, 'Type:', typeof studentId);
+    console.log('Student name from attendance:', studentName);
     
     // If missing from attendance docs, try students cache with different ID formats
     if (!studentName || !fatherName) {
@@ -802,23 +693,23 @@ async function loadStudentDetailsPage() {
         }
       }
       
-      
+      console.log('Found student in cache:', foundStudent);
       if (foundStudent) {
         if (!studentName && foundStudent.name) {
           studentName = foundStudent.name;
-  
+          console.log('Using name from cache:', studentName);
         }
         if (!fatherName && foundStudent.father) {
           fatherName = foundStudent.father;
-  
+          console.log('Using father name from cache:', fatherName);
         }
       } else {
-
+        console.log('No student found in cache with ID formats:', possibleIdFormats);
       }
     }
 
     // Fallback to student ID if name not found
-    
+    console.log('Final student name:', studentName);
     const displayName = studentName || `Student ${studentId}`;
     
     // Update the student name in the UI
@@ -929,7 +820,7 @@ async function checkUserLocation(retryCount = 0) {
     };
     
     // Debug: Log that we're starting location check
-    
+    console.log('Starting location check with options:', options);
     
     const handleSuccess = (position) => {
       try {
@@ -945,7 +836,7 @@ async function checkUserLocation(retryCount = 0) {
         // Calculate distance in meters
         const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
         const distanceRounded = Math.round(distance);
-
+        console.log(`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
         
         if (isNaN(distance) || !isFinite(distance)) {
           throw new Error('Invalid distance calculation');
@@ -953,12 +844,12 @@ async function checkUserLocation(retryCount = 0) {
         
         if (distance <= ALLOWED_RADIUS_METERS) {
           const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
-  
+          console.log(successMsg);
           showLocationStatus(successMsg, 'allowed');
           resolve({ success: true, distance: distanceRounded });
         } else {
           const statusMsg = `❌ You're ${distanceRounded}m from GNDU (must be within ${ALLOWED_RADIUS_METERS}m)`;
-  
+          console.log(statusMsg);
           showLocationStatus(statusMsg, 'denied');
           resolve({ success: false, distance: distanceRounded });
         }
@@ -1025,7 +916,7 @@ async function checkUserLocation(retryCount = 0) {
     if (navigator.permissions) {
       navigator.permissions.query({name: 'geolocation'})
         .then(permissionStatus => {
-  
+          console.log('Geolocation permission state:', permissionStatus.state);
           
           if (permissionStatus.state === 'denied') {
             handleError({ code: 'PERMISSION_DENIED' });
@@ -1037,7 +928,7 @@ async function checkUserLocation(retryCount = 0) {
           
           // Listen for permission changes
           permissionStatus.onchange = () => {
-    
+            console.log('Geolocation permission changed to:', permissionStatus.state);
             if (permissionStatus.state === 'granted') {
               navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
             }
@@ -1141,7 +1032,7 @@ function checkStudentsLoaded() {
   
   if (Array.isArray(students) && students.length > 0) {
     if (loadingMsg) loadingMsg.style.display = 'none';
-    
+    console.log(`✅ Students loaded from Firestore: ${students.length}`);
     return true;
   } else {
     if (loadingMsg) {
@@ -1246,182 +1137,7 @@ function findTeacherAndTime(date, subjectCode) {
   };
 }
 
-// Start attendance session with secret code
-async function startAttendance() {
-  // Prevent double-clicks
-  const startBtn = document.getElementById('startBtn');
-  if (startBtn.disabled) return;
-  
-  // Validate form first
-  if (!validateForm()) {
-    return;
-  }
-
-  // Get form values with null checks
-  const dateInput = document.getElementById('attendanceDate');
-  const subjectSelect = document.getElementById('subjectCode');
-  const secretInput = document.getElementById('secretCode');
-  
-  // Required fields - these should be present due to form validation
-  if (!dateInput || !subjectSelect || !secretInput) {
-    console.error('Required form elements not found');
-    return;
-  }
-
-  const date = dateInput.value;
-  const day = new Date(date).toLocaleDateString('en-US', { weekday: 'long' });
-  const subjectCode = subjectSelect.value;
-  const subjectName = subjectSelect.options[subjectSelect.selectedIndex].text;
-  const secretCode = secretInput.value;
-  
-  // Optional fields with defaults
-  const timeSlot = '09:00 AM - 10:00 AM'; // Default time slot
-  const teacherName = 'Teacher'; // Default teacher name
-  
-  // Generate a unique session ID
-  sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-  
-  // Set expiry time (1 hour from now)
-  const expiryTime = new Date();
-  expiryTime.setHours(expiryTime.getHours() + 1);
-  
-  // Create session object
-  const sessionData = {
-    sessionId: sessionId,
-    date: date,
-    day: day,
-    timeSlot: timeSlot,
-    subjectCode: subjectCode,
-    subjectName: subjectName,
-    teacherName: teacherName,
-    secretCode: secretCode,
-    expiryTime: expiryTime.toISOString(),
-    isExpired: false,
-    createdAt: new Date().toISOString()
-  };
-  
-  try {
-    // Save to Firebase if available
-    if (firebaseInitialized) {
-      try {
-        await db.collection('attendanceSessions').doc(sessionId).set({
-          ...sessionData,
-          expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
-          status: 'active',
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } catch (firebaseError) {
-        console.warn('Could not save to Firebase, continuing with local storage:', firebaseError);
-      }
-    }
-    
-    // Save to local storage
-    const localSessionKey = `session_${date}_${subjectCode}`;
-    localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
-    localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
-    
-    // Update UI to show attendance session
-    displayAttendanceSession(sessionData);
-    
-    // Update global variables
-    currentSession = sessionData;
-    // Use window object to modify global variable
-    window.sessionId = sessionData.sessionId;
-    checkinUrl = window.location.href.split('?')[0] + '?session=' + window.sessionId;
-    
-    // Update UI elements
-    document.getElementById('sessionUrl').textContent = checkinUrl;
-    document.getElementById('setupSection').style.display = 'none';
-    document.getElementById('attendanceSection').style.display = 'block';
-    
-    // Start listening for attendance updates
-    startListeningToAttendance();
-    
-  } catch (error) {
-    console.error('Error starting attendance:', error);
-    alert('Error starting attendance session. Please try again.');
-    startBtn.disabled = false;
-  }
-}
-
-// Display the attendance session UI
-function displayAttendanceSession(session) {
-  const classInfo = document.getElementById('classInfo');
-  if (!classInfo) return;
-  
-  const expiryTime = new Date(session.expiryTime);
-  const formattedExpiry = expiryTime.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-  
-  classInfo.innerHTML = `
-    <h3>Current Attendance Session</h3>
-    <div class="class-details">
-      <div><strong>Date:</strong> ${session.date} (${session.day})</div>
-      <div><strong>Time:</strong> ${session.timeSlot}</div>
-      <div><strong>Subject:</strong> ${session.subjectName}</div>
-      <div><strong>Teacher:</strong> ${session.teacherName}</div>
-    </div>
-    <div class="secret-code-info">
-      <strong>🔑 Secret Code:</strong>
-      <div class="secret-code-display">${session.secretCode}</div>
-    </div>
-    <div class="expiry-info">
-      <strong>⏰ Expires:</strong> ${formattedExpiry}
-    </div>
-  `;
-  
-  // Show the attendance section
-  document.getElementById('attendanceSection').style.display = 'block';
-  
-  // Update the expire button
-  const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
-  if (expireBtn) {
-    expireBtn.style.display = 'inline-block';
-  }
-}
-
-// Start listening for attendance updates
-function startListeningToAttendance() {
-  if (!firebaseInitialized || !sessionId) return;
-  
-  // Listen for attendance updates in real-time
-  db.collection('attendance')
-    .where('sessionId', '==', sessionId)
-    .onSnapshot((snapshot) => {
-      const attendanceData = [];
-      snapshot.forEach((doc) => {
-        attendanceData.push(doc.data());
-      });
-      updateAttendanceTable(attendanceData);
-    });
-}
-
-// Update the attendance table with latest data
-function updateAttendanceTable(attendanceData) {
-  const tableBody = document.querySelector('#attendanceTable tbody');
-  if (!tableBody) return;
-  
-  // Clear existing rows
-  tableBody.innerHTML = '';
-  
-  // Add new rows
-  attendanceData.forEach((record, index) => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${index + 1}</td>
-      <td>${record.rollNumber || 'N/A'}</td>
-      <td>${record.studentName || 'Anonymous'}</td>
-      <td>${new Date(record.timestamp?.toDate() || record.timestamp).toLocaleString()}</td>
-      <td>${record.status || 'Present'}</td>
-    `;
-    tableBody.appendChild(row);
-  });
-}
-
+// Enhanced startAttendance with secret code
 // Test function to verify expiry - can be called from console: testExpiry()
 window.testExpiry = function() {
   const testSession = {
@@ -1430,15 +1146,125 @@ window.testExpiry = function() {
     expiryTime: new Date(Date.now() - 1000).toISOString() // 1 second ago
   };
   
+  console.log('Testing expiry with expired session:', isSessionExpired(testSession));
+  
   const validSession = {
     sessionId: 'TEST_456',
     date: new Date().toLocaleDateString('en-GB'),
     expiryTime: new Date(Date.now() + 3600000).toISOString() // 1 hour from now
   };
   
-  console.log('Test expired session (should be true):', isSessionExpired(testSession));
-  console.log('Test valid session (should be false):', isSessionExpired(validSession));
+  console.log('Testing expiry with valid session:', isSessionExpired(validSession));
 };
+
+function isSessionExpired(sessionData) {
+  // Handle null/undefined sessionData
+  if (!sessionData) {
+    console.log('⚠️ Session data is null/undefined, treating as expired');
+    return true;
+  }
+  
+  console.log('🔍 Checking session expiry:', {
+    hasExpiryTime: !!sessionData.expiryTime,
+    expiryTime: sessionData.expiryTime,
+    isExpired: sessionData.isExpired,
+    sessionDate: sessionData.date
+  });
+  
+  // Check if session was manually expired via isExpired flag
+  if (sessionData.isExpired === true) {
+    console.log('❌ Session expired via isExpired flag (manual expiry)');
+    return true;
+  }
+  
+  if (!sessionData.expiryTime) {
+    // For very old sessions (created before expiry feature), consider them expired after 2 hours
+    // This prevents indefinite access to old sessions
+    let sessionDate;
+    if (sessionData.date) {
+      try {
+        // Parse dd/mm/yyyy format
+        const parts = sessionData.date.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          // Check if date is valid
+          if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 2020) {
+            sessionDate = parsedDate;
+          } else {
+            console.log('⚠️ Invalid parsed date, using creation time fallback');
+            sessionDate = new Date();
+          }
+        } else {
+          console.log('⚠️ Invalid date format, using creation time fallback');
+          sessionDate = new Date();
+        }
+      } catch (e) {
+        console.log('⚠️ Date parsing error, using creation time fallback:', e);
+        sessionDate = new Date();
+      }
+    } else {
+      sessionDate = new Date();
+    }
+    
+    // Only expire old sessions if they are actually old (created more than 2 hours ago)
+    const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+    const age = Date.now() - sessionDate.getTime();
+    const isOld = age > maxAge;
+    console.log('📅 Old session check:', { 
+      age: Math.round(age / 1000 / 60), // minutes
+      maxAge: Math.round(maxAge / 1000 / 60), // minutes
+      isOld, 
+      parsedDate: sessionDate.toISOString() 
+    });
+    return isOld;
+  }
+  
+  const now = new Date();
+  
+  // Handle missing or invalid expiryTime
+  if (!sessionData.expiryTime || sessionData.expiryTime === 'Invalid Date') {
+    console.log('⚠️ Invalid expiryTime found, treating as expired:', sessionData.expiryTime);
+    return true; // Treat invalid dates as expired
+  }
+  
+  try {
+    // Handle Firestore Timestamp objects
+    let expiryTime;
+    if (sessionData.expiryTime && typeof sessionData.expiryTime.toDate === 'function') {
+      // Firestore Timestamp object
+      expiryTime = sessionData.expiryTime.toDate();
+    } else if (typeof sessionData.expiryTime === 'string') {
+      // ISO string from localStorage
+      expiryTime = new Date(sessionData.expiryTime);
+    } else if (sessionData.expiryTime && typeof sessionData.expiryTime.seconds === 'number') {
+      // Firestore Timestamp in plain object format
+      expiryTime = new Date(sessionData.expiryTime.seconds * 1000);
+    } else {
+      // Direct Date object or other format
+      expiryTime = new Date(sessionData.expiryTime);
+    }
+    
+    if (isNaN(expiryTime.getTime())) {
+      console.log('⚠️ Invalid date object from expiryTime, treating as expired:', sessionData.expiryTime);
+      return true;
+    }
+    
+    // Add 5-minute buffer to prevent premature expiry due to clock differences
+    const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const isExpired = now.getTime() > (expiryTime.getTime() + bufferTime);
+    console.log('⏰ Expiry check:', { 
+      now: now.toISOString(), 
+      expiryTime: expiryTime.toISOString(), 
+      isExpired,
+      bufferMinutes: 5
+    });
+    return isExpired;
+  } catch (error) {
+    console.log('⚠️ Error parsing expiryTime, treating as expired:', error);
+    return true;
+  }
+}
 
 async function expireSessionManually() {
   if (!sessionId) {
@@ -1451,65 +1277,168 @@ async function expireSessionManually() {
   }
 
   try {
-    // Update URL to reflect expired state
-    const url = new URL(window.location);
-    url.searchParams.set('expired', 'true');
-    window.history.replaceState({}, '', url);
-
-    // Update Firebase if available
+    // Update Firebase
     if (firebaseInitialized) {
-      try {
-        await db.collection('attendanceSessions').doc(sessionId).update({
-          isExpired: true,
-          expiredAt: firebase.firestore.FieldValue.serverTimestamp(),
-          status: 'expired'
-        });
-      } catch (firebaseError) {
-        console.warn('Could not update Firebase, continuing with local state:', firebaseError);
-      }
+      await db.collection('attendanceSessions').doc(sessionId).update({
+        isExpired: true,
+        expiredAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'expired'
+      });
     }
 
     // Update local storage
-    const localSessionKey = `session_${currentSession?.date}_${currentSession?.subjectCode}`;
+    const localSessionKey = `session_${currentSession.date}_${currentSession.subjectCode}`;
     const sessionData = JSON.parse(localStorage.getItem(localSessionKey) || '{}');
     sessionData.isExpired = true;
     sessionData.expiredAt = new Date().toISOString();
     localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
     localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
 
-    // Only show expired message if we're on the student check-in page
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('session') && !urlParams.has('view')) {
-      // We're on the student check-in page, show expired message
-      displayExpiredSessionMessage();
-      
-      // Hide any active forms or loading indicators
-      const checkinForm = document.getElementById('checkinForm');
-      const loadingIndicator = document.getElementById('loadingIndicator');
-      if (checkinForm) checkinForm.style.display = 'none';
-      if (loadingIndicator) loadingIndicator.style.display = 'none';
-    } else {
-      // On teacher dashboard, just show a success message
-      showNotification('Attendance session has been expired successfully', 'success');
+    // Update UI
+    document.getElementById('sessionExpired').style.display = 'block';
+    document.getElementById('expiryInfo').textContent = 'Session expired manually';
+    document.getElementById('expiryInfo').style.color = '#e74c3c';
+    
+    // Disable attendance marking
+    document.getElementById('studentCheckinForm')?.style.setProperty('opacity', '0.5');
+    document.getElementById('studentCheckinForm')?.style.setProperty('pointer-events', 'none');
+    
+    // Change expire button to restart button
+    const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
+    if (expireBtn) {
+      expireBtn.textContent = '🔄 Restart Session';
+      expireBtn.style.backgroundColor = '#27ae60';
+      expireBtn.setAttribute('onclick', 'restartSession()');
     }
     
+    showNotification('Session expired successfully', 'success');
+    console.log('Session expired manually:', sessionId);
   } catch (error) {
     console.error('Error expiring session:', error);
     alert('Error expiring session. Please try again.');
   }
 }
 
+async function startAttendance() {
+  if (!validateForm()) {
+    alert('Please ensure all fields are filled including the secret code');
+    return;
+  }
+
+  const date = document.getElementById('attendanceDate').value;
+  const subjectCode = document.getElementById('subjectCode').value;
+  const secretCode = document.getElementById('secretCode').value.trim().toUpperCase();
+  
+  const selectedDate = new Date(date);
+  const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+  const formattedDate = selectedDate.toLocaleDateString('en-GB');
+  
+  const existingSession = await findExistingSession(formattedDate, subjectCode);
+    
+    let isNewSession = false;
+    
+    if (existingSession && existingSession.id) {
+      // Check if existing session is expired
+      if (isSessionExpired(existingSession)) {
+        sessionId = existingSession.id;
+        currentSession = existingSession;
+        sessionSecretCode = existingSession.secretCode || secretCode;
+        console.log('📖 Viewing expired session:', sessionId);
+        showNotification('📖 Viewing expired attendance session', 'info');
+        
+        await loadExistingAttendance(sessionId);
+      } else {
+        sessionId = existingSession.id;
+        currentSession = existingSession;
+        sessionSecretCode = existingSession.secretCode || secretCode;
+        console.log('🔄 Continuing existing session:', sessionId);
+        showNotification('📚 Continuing existing attendance session', 'success');
+        
+        await loadExistingAttendance(sessionId);
+      }
+    } else {
+      isNewSession = true;
+    }
+
+  if (isNewSession) {
+    const classDetails = findTeacherAndTime(date, subjectCode);
+    sessionId = generateSessionId();
+    sessionSecretCode = secretCode;
+
+    const expiryTime = new Date();
+    expiryTime.setHours(expiryTime.getHours() + 1);
+
+    currentSession = {
+      sessionId: sessionId,
+      date: formattedDate,
+      day: dayName,
+      timeSlot: classDetails.timeSlot,
+      subjectCode: subjectCode,
+      subjectName: subjectNames[subjectCode],
+      teacherName: classDetails.teacher,
+      secretCode: sessionSecretCode,
+      expiryTime: expiryTime.toISOString(),
+      isExpired: false,
+      createdAt: new Date().toISOString()
+    };
+
+    await createAttendanceSession(currentSession);
+    console.log('🆕 Created new session:', sessionId);
+    showNotification('✅ New attendance session started (expires in 1 hour)', 'success');
+    
+    attendance = {};
+    attendanceTime = {};
+  }
+
+  checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+
+  const isExpired = isSessionExpired(currentSession);
+  const sessionStatus = isNewSession ? 'New' : (isExpired ? 'Viewing Expired' : 'Continuing');
+  
+  document.getElementById('classInfo').innerHTML = `
+    <h3>${sessionStatus} Attendance Session</h3>
+    <div class="class-details">
+      <div><strong>Date:</strong> ${currentSession.date} (${currentSession.day})</div>
+      <div><strong>Time:</strong> ${currentSession.timeSlot}</div>
+      <div><strong>Subject:</strong> ${currentSession.subjectName}</div>
+      <div><strong>Teacher:</strong> ${currentSession.teacherName}</div>
+      ${!isNewSession && !isExpired ? '<div><strong>Status:</strong> Existing session resumed</div>' : ''}
+    </div>
+    <div class="secret-code-info">
+      <strong>🔑 Secret Code:</strong>
+      <div class="secret-code-display">${sessionSecretCode}</div>
+    </div>
+    <div class="expiry-info" id="expiryInfo">
+      ${isExpired ? '<strong>⏰ Expired:</strong> This session has expired' : `<strong>⏰ Expires:</strong> ${new Date(currentSession.expiryTime).toLocaleString()}`}
+    </div>
+    ${isExpired ? '<div class="session-expired" id="sessionExpired">❌ Session Expired - Students can no longer mark attendance</div>' : ''}
+  `;
+
+  document.getElementById('sessionUrl').textContent = checkinUrl;
+
+  // Replace expire button with restart button for expired sessions
+  if (isExpired) {
+    const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
+    if (expireBtn) {
+      expireBtn.textContent = '🔄 Restart Session';
+      expireBtn.style.backgroundColor = '#27ae60';
+      expireBtn.setAttribute('onclick', 'restartSession()');
+    }
+  }
+
+  document.getElementById('setupSection').style.display = 'none';
+  document.getElementById('attendanceSection').style.display = 'block';
+
+  renderTable();
+  startListeningToAttendance();
+}
+
 async function restartSession() {
-  if (!confirm('Are you sure you want to restart this session? Students will be able to mark attendance again.')) {
+  if (!confirm('Are you sure you want to restart this session? This will reset the session expiry time and clear existing attendance data.')) {
     return;
   }
 
   try {
-    // Remove expired flag from URL
-    const url = new URL(window.location);
-    url.searchParams.delete('expired');
-    window.history.replaceState({}, '', url);
-
     // Reuse existing session ID to keep the same address
     const expiryTime = new Date();
     expiryTime.setHours(expiryTime.getHours() + 1);
@@ -1528,30 +1457,47 @@ async function restartSession() {
       createdAt: new Date().toISOString()
     };
 
-    // Update Firebase if available
-    if (firebaseInitialized) {
-      try {
-        await db.collection('attendanceSessions').doc(sessionId).update({
-          isExpired: false,
-          expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
-          status: 'active',
-          lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      } catch (firebaseError) {
-        console.warn('Could not update Firebase, continuing with local state:', firebaseError);
-      }
+    await createAttendanceSession(newSession);
+    
+    // Update current session
+    currentSession = newSession;
+    
+    // Keep the same checkin URL since session ID hasn't changed
+    checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+    document.getElementById('sessionUrl').textContent = checkinUrl;
+    
+    document.getElementById('classInfo').innerHTML = `
+      <h3>Restarted Attendance Session</h3>
+      <div class="class-details">
+        <div><strong>Date:</strong> ${newSession.date} (${newSession.day})</div>
+        <div><strong>Time:</strong> ${newSession.timeSlot}</div>
+        <div><strong>Subject:</strong> ${newSession.subjectName}</div>
+        <div><strong>Teacher:</strong> ${newSession.teacherName}</div>
+        <div><strong>Status:</strong> Session restarted with fresh expiry</div>
+      </div>
+      <div class="secret-code-info">
+        <strong>🔑 Secret Code:</strong>
+        <div class="secret-code-display">${newSession.secretCode}</div>
+      </div>
+      <div class="expiry-info" id="expiryInfo">
+        <strong>⏰ Expires:</strong> ${new Date(newSession.expiryTime).toLocaleString()}
+      </div>
+    `;
+
+    // Reset button back to expire
+    const restartBtn = document.querySelector('.share-btn[onclick="restartSession()"]');
+    if (restartBtn) {
+      restartBtn.textContent = '⏰ Expire Session';
+      restartBtn.style.backgroundColor = '#e74c3c';
+      restartBtn.setAttribute('onclick', 'expireSessionManually()');
     }
 
-    // Update local storage
-    const localSessionKey = `session_${currentSession?.date}_${currentSession?.subjectCode}`;
-    const sessionData = JSON.parse(localStorage.getItem(localSessionKey) || '{}');
-    sessionData.isExpired = false;
-    sessionData.expiryTime = expiryTime.toISOString();
-    localStorage.setItem(localSessionKey, JSON.stringify(sessionData));
-    localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
-
-    // Force reload to show active state
-    window.location.reload();
+    // Keep existing attendance data when restarting session
+    renderTable();
+    startListeningToAttendance();
+    
+    showNotification('✅ Session restarted successfully with fresh expiry', 'success');
+    console.log('Session restarted:', sessionId);
     
   } catch (error) {
     console.error('Error restarting session:', error);
@@ -1596,7 +1542,7 @@ function closeStudentDetailsModal() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  
+  console.log('🚀 GNDU Attendance System starting...');
 
   // Add click handler for close button
   const closeBtn = document.getElementById('closeStudentDetails');
@@ -1688,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     updateRollPlaceholder();
     setupSorting();
-    
+    console.log('✅ Teacher dashboard initialized');
     // Run once on load to detect any existing session for today/selected subject
     handleSessionPrefill();
     // Ensure initial render with proper roll numbers
@@ -1696,7 +1642,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateRollPlaceholder();
     renderTable();
   } else {
-    
+    console.log('✅ Student check-in page initialized');
     (function ensureStudentPageRollMaps(){
       const studentList = (typeof students !== 'undefined' && Array.isArray(students))
         ? students
@@ -1933,19 +1879,19 @@ function applyFilters() {
 
 async function findExistingSession(date, subjectCode) {
   if (!firebaseInitialized) {
-    
+    console.log('🔍 Firebase not available, checking local storage for existing sessions');
     
     const localSessionKey = `session_${date}_${subjectCode}`;
     const localSession = localStorage.getItem(localSessionKey);
     if (localSession) {
-      
+      console.log('📂 Found existing session in local storage');
       return JSON.parse(localSession);
     }
     return null;
   }
 
   try {
-    
+    console.log('🔍 Searching for existing session:', { date, subjectCode });
     
     const sessionsRef = db.collection('attendanceSessions');
     const querySnapshot = await sessionsRef
@@ -1956,11 +1902,11 @@ async function findExistingSession(date, subjectCode) {
 
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];
-      
+      console.log('🎯 Found existing session:', doc.id);
       return { id: doc.id, ...doc.data() };
     }
 
-    
+    console.log('❌ No existing session found');
     return null;
   } catch (error) {
     console.error('❌ Error searching for existing session:', error);
@@ -1996,7 +1942,7 @@ async function loadExistingAttendance(sessionId) {
         }
       });
 
-      
+      console.log(`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
     } catch (error) {
       console.error('❌ Error loading attendance from Firebase:', error);
     }
@@ -2021,7 +1967,7 @@ async function loadExistingAttendance(sessionId) {
     }
   });
 
-  
+  console.log(`📊 Total attendance loaded: ${Object.keys(attendance).length} students`);
 }
 
 async function createAttendanceSession(sessionData) {
@@ -2029,18 +1975,23 @@ async function createAttendanceSession(sessionData) {
   const expiryTime = new Date();
   expiryTime.setHours(expiryTime.getHours() + 1);
   
+  // Ensure all required fields are included in the session data
   const sessionWithExpiry = {
     ...sessionData,
+    secretCode: sessionData.secretCode || '', // Ensure secretCode exists
     expiryTime: expiryTime.toISOString(),
-    isExpired: false
+    isExpired: false,
+    createdAt: sessionData.createdAt || new Date().toISOString()
   };
   
+  // Save to localStorage with both keys for backward compatibility
   const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
-  localStorage.setItem(localSessionKey, JSON.stringify(sessionWithExpiry));
-  localStorage.setItem('attendanceSession_' + sessionData.sessionId, JSON.stringify(sessionWithExpiry));
+  const sessionString = JSON.stringify(sessionWithExpiry);
+  localStorage.setItem(localSessionKey, sessionString);
+  localStorage.setItem('attendanceSession_' + sessionData.sessionId, sessionString);
 
   if (!firebaseInitialized) {
-    
+    console.log('📂 Session saved to local storage only');
     return;
   }
 
@@ -2054,7 +2005,7 @@ async function createAttendanceSession(sessionData) {
       expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
       isExpired: false
     });
-    
+    console.log('✅ Attendance session created in Firebase with 1-hour expiry');
   } catch (error) {
     console.error('❌ Error creating attendance session in Firebase:', error);
   }
@@ -2079,7 +2030,7 @@ async function createNewSession(date, subject, secretCode) {
     try {
       const docRef = await db.collection('sessions').add(sessionData);
       sessionId = docRef.id;
-      
+      console.log('🆕 Created new session online:', sessionId);
     } catch (error) {
       console.warn('⚠️ Could not create session online, using offline mode', error);
       // Create a local ID for offline use
@@ -2088,7 +2039,7 @@ async function createNewSession(date, subject, secretCode) {
       const offlineSessions = JSON.parse(localStorage.getItem('offlineSessions') || '[]');
       offlineSessions.push({ id: sessionId, ...sessionData });
       localStorage.setItem('offlineSessions', JSON.stringify(offlineSessions));
-      
+      console.log('🆕 Created new offline session:', sessionId);
       
       // Show warning to user
       showNotification('⚠️ Working in offline mode. Data will sync when back online.', 'warning');
@@ -2114,7 +2065,7 @@ async function markStudentPresent(studentId, studentData) {
   attendanceTime[studentId] = studentData.time || new Date().toLocaleTimeString();
   
   if (!firebaseInitialized || !studentId || !sessionId) {
-    
+    console.log('📂 Firebase not initialized, saved to local storage only');
     return false;
   }
 
@@ -2143,14 +2094,14 @@ async function markStudentPresent(studentId, studentData) {
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-    
+    console.log('✅ Student attendance saved to Firebase');
     return true;
   } catch (error) {
     console.error('❌ Error saving attendance to Firebase:', error);
     
     // If offline, the data will be synced when back online
     if (error.code === 'unavailable') {
-      
+      console.log('📴 Offline - Attendance will sync when back online');
       return true; // Consider it a success since it will sync later
     }
     
@@ -2161,7 +2112,7 @@ async function markStudentPresent(studentId, studentData) {
 function startListeningToAttendance() {
   if (!sessionId) return;
   
-  
+  console.log('🔄 Starting to listen for attendance updates for session:', sessionId);
   
   // Clear any existing listener
   if (attendanceListener) {
@@ -2178,7 +2129,7 @@ function startListeningToAttendance() {
     attendanceListener = attendanceRef.onSnapshot(
       (snapshot) => {
         // Success callback
-
+        console.log('Received attendance update with', snapshot.docChanges().length, 'changes');
         
         snapshot.docChanges().forEach((change) => {
           const data = change.doc.data();
@@ -2192,7 +2143,7 @@ function startListeningToAttendance() {
           switch (change.type) {
             case 'added':
             case 'modified':
-      
+              console.log(`📝 Student ${studentId} attendance updated:`, data);
               // Update local attendance state
               attendance[studentId] = true;
               attendanceTime[studentId] = data.timestamp?.toDate?.() || data.markedAt?.toDate?.() || new Date();
@@ -2201,16 +2152,16 @@ function startListeningToAttendance() {
               const student = students.find(s => s.id.toString() === studentId);
               if (student) {
                 updateAttendance(studentId, 'present', attendanceTime[studentId]);
-        
+                console.log(`✅ ${student.name || studentId} marked present`);
               }
               break;
               
             case 'removed':
-      
+              console.log(`🗑️ Student ${studentId} attendance removed`);
               delete attendance[studentId];
               delete attendanceTime[studentId];
               updateAttendance(studentId, 'absent', null);
-      
+              console.log(`❌ ${data.name || studentId} attendance removed`);
               break;
           }
         });
@@ -2325,7 +2276,7 @@ function renderTable() {
     if (attendance[student.id]) { statusSpan.className = 'status-present'; statusSpan.textContent = 'Present'; }
     else { statusSpan.className = 'status-absent'; statusSpan.textContent = 'Absent'; }
     td5.appendChild(statusSpan);
-    const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[studentId]) : '-';
+    const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
     row.appendChild(td1); row.appendChild(td2); row.appendChild(td3); row.appendChild(td4); row.appendChild(td5); row.appendChild(td6);
     tbody.appendChild(row);
   });
@@ -2338,6 +2289,137 @@ async function exportToExcel() {
   try {
     if (!window.ExcelJS) {
       alert('ExcelJS library not loaded. Please check your internet connection and try again.');
+      return;
+    }
+
+    const filtered = applyFilters();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Attendance');
+
+    // Optional: Title and session info
+    const title = 'GNDU Attendance';
+    ws.mergeCells('A1:F1');
+    ws.getCell('A1').value = title;
+    ws.getCell('A1').font = { size: 16, bold: true };
+    ws.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Session details row (if available)
+    const infoParts = [];
+    if (currentSession?.date) infoParts.push(`Date: ${currentSession.date}`);
+    if (currentSession?.timeSlot) infoParts.push(`Time: ${currentSession.timeSlot}`);
+    if (currentSession?.subjectName) infoParts.push(`Subject: ${currentSession.subjectName}`);
+    if (currentSession?.teacherName) infoParts.push(`Teacher: ${currentSession.teacherName}`);
+    const info = infoParts.join('  •  ');
+    if (info) {
+      ws.mergeCells('A2:F2');
+      ws.getCell('A2').value = info;
+      ws.getCell('A2').font = { size: 11, color: { argb: 'FF555555' } };
+      ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
+    }
+
+    // Header row at row 4 for clear spacing
+    const headerRowIndex = 4;
+    const headers = ['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'];
+    ws.getRow(headerRowIndex).values = headers;
+
+    // Column widths approximating UI
+    ws.columns = [
+      { key: 'roll', width: 12 },
+      { key: 'id', width: 14 },
+      { key: 'name', width: 28 },
+      { key: 'father', width: 28 },
+      { key: 'status', width: 12 },
+      { key: 'time', width: 16 }
+    ];
+
+    // Style header
+    const headerRow = ws.getRow(headerRowIndex);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }; // gray-700
+    headerRow.height = 20;
+
+    // Add data rows starting at row 5
+    const startRow = headerRowIndex + 1;
+    filtered.forEach((student, i) => {
+      const rowIndex = startRow + i;
+      const isPresent = !!attendance[student.id];
+      const time = attendanceTime[student.id] || '-';
+      const row = ws.getRow(rowIndex);
+      row.values = [
+        getRollNumberById(student.id),
+        String(student.id),
+        String(student.name || ''),
+        String(student.father || ''),
+        isPresent ? 'Present' : 'Absent',
+        String(time)
+      ];
+
+      // Row styling
+      row.alignment = { vertical: 'middle' };
+      // Mimic UI: green-ish background for present rows
+      if (isPresent) {
+        row.eachCell((cell, col) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFAF0' } }; // light green tint
+        });
+      }
+      // Status cell color coding
+      const statusCell = ws.getCell(rowIndex, 5);
+      statusCell.font = { bold: true, color: { argb: isPresent ? 'FF1F7A1F' : 'FFB00020' } };
+      statusCell.alignment = { horizontal: 'center' };
+    });
+
+    // Borders for table area
+    const lastRow = startRow + filtered.length - 1;
+    for (let r = headerRowIndex; r <= lastRow; r++) {
+      for (let c = 1; c <= 6; c++) {
+        const cell = ws.getCell(r, c);
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          left: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          bottom: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+          right: { style: 'thin', color: { argb: 'FFAAAAAA' } }
+        };
+      }
+    }
+
+    // Freeze header (no autofilter to avoid filter arrows)
+    ws.views = [{ state: 'frozen', ySplit: headerRowIndex }];
+
+    // Align certain columns
+    ['A', 'B', 'E', 'F'].forEach(col => {
+      ws.getColumn(col).alignment = { horizontal: 'center' };
+    });
+
+    // Generate and download
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance_${dateStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('XLSX export failed:', err);
+    alert('Failed to export Excel file. Please try again.');
+  }
+}
+
+// Detect Android devices
+function isAndroid() {
+  return /Android/i.test(navigator.userAgent || '');
+}
+
+// Generate and download a PDF of the current view (Android-friendly)
+async function downloadAttendancePdf() {
+  try {
+    if (typeof html2pdf === 'undefined') {
+      // Fallback if library missing
+      printAttendance();
       return;
     }
 
@@ -2361,15 +2443,14 @@ async function exportToExcel() {
     meta.style.fontSize = '12px';
     meta.style.margin = '0 0 12px';
     const sessionBits = [];
-    if (currentSession?.date) sessionBits.push(`Date: ${currentSession.date}`);
-    if (currentSession?.timeSlot) sessionBits.push(`Time: ${currentSession.timeSlot}`);
-    if (currentSession?.subjectName) sessionBits.push(`Subject: ${currentSession.subjectName}`);
-    if (currentSession?.teacherName) sessionBits.push(`Teacher: ${currentSession.teacherName}`);
-    const info = sessionBits.join(' • ');
-    if (info) {
-      meta.textContent = info;
-      container.appendChild(meta);
+    if (currentSession) {
+      if (currentSession.date) sessionBits.push(`Date: ${currentSession.date}`);
+      if (currentSession.timeSlot) sessionBits.push(`Time: ${currentSession.timeSlot}`);
+      if (currentSession.subjectName) sessionBits.push(`Subject: ${currentSession.subjectName}`);
+      if (currentSession.teacherName) sessionBits.push(`Teacher: ${currentSession.teacherName}`);
     }
+    meta.textContent = sessionBits.join(' • ');
+    container.appendChild(meta);
 
     const table = document.createElement('table');
     table.style.width = '100%';
@@ -2552,7 +2633,7 @@ window.testExpiredSession = function() {
   
   // Navigate to test URL
   const testUrl = window.location.href.split('?')[0] + '?session=' + testSessionId;
-  
+  console.log('Test expired session URL:', testUrl);
   
   // Optionally open in new tab
   if (confirm('Open test expired session in new tab?')) {
@@ -2613,12 +2694,12 @@ window.printAttendance = printAttendance;
 window.printTableAsIs = printTableAsIs;
 
 async function showStudentCheckin(sessionParam) {
-  
+  console.log('🔍 Loading session data for:', sessionParam);
   let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
   
   // If we have a valid cached session, use it immediately
   if (session && session.sessionId === sessionParam) {
-    
+    console.log('📦 Using cached session data');
     // Check if session is expired before displaying
     if (isSessionExpired(session)) {
       displayExpiredSessionMessage();
@@ -2627,7 +2708,7 @@ async function showStudentCheckin(sessionParam) {
     
     // For cached sessions without expiry, force refresh from Firestore
     if (!session.expiryTime && firebaseInitialized) {
-      
+      console.log('🔄 Cached session missing expiry, refreshing from Firestore...');
       // Skip cached session and use Firestore instead
     } else {
       displayStudentCheckin(session);
@@ -2643,12 +2724,12 @@ async function showStudentCheckin(sessionParam) {
   // If we don't have a valid session, try to load from Firestore
   if (firebaseInitialized) {
     try {
-      
+      console.log('🌐 Fetching session data from Firestore');
       const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
       
       if (doc.exists) {
         session = doc.data();
-
+        console.log('✅ Session data loaded from Firestore:', session);
         
         // Convert Firestore Timestamp to proper format before expiry check
         if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
@@ -2678,7 +2759,7 @@ async function showStudentCheckin(sessionParam) {
   } else {
     // Create a temporary session object for student links when Firebase is not initialized
     // This allows student links to work without requiring login
-    
+    console.log('Firebase not initialized, creating temporary session');
     const tempSession = {
       sessionId: sessionParam,
       date: new Date().toLocaleDateString('en-GB'),
@@ -2710,7 +2791,7 @@ async function updateSessionFromFirestore(sessionParam) {
     const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
     if (doc.exists) {
       let session = doc.data();
-      
+      console.log('🔄 Updated session data from Firestore');
       
       // Convert Firestore Timestamp to proper format for consistency
       if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
@@ -2751,44 +2832,24 @@ function showError(message) {
 }
 
 function displayExpiredSessionMessage() {
-  try {
-    console.log('Displaying expired session message');
+  // Hide other sections
+  const loginScreen = document.getElementById('loginScreen');
+  const teacherDashboard = document.getElementById('teacherDashboard');
+  const checkinSection = document.getElementById('studentCheckin');
+  
+  if (loginScreen) loginScreen.style.display = 'none';
+  if (teacherDashboard) teacherDashboard.style.display = 'none';
+  if (checkinSection) {
+    checkinSection.style.display = 'block';
     
-    // Update URL to reflect expired state for non-logged-in users if not already set
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('expired') !== 'true') {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.set('expired', 'true');
-      window.history.replaceState({}, '', newUrl);
-      console.log('Updated URL with expired parameter');
-    }
-    
-    // Also update sessionStorage if available
-    try {
-      sessionStorage.setItem('sessionExpired', 'true');
-    } catch (e) {
-      console.log('Could not access sessionStorage (private browsing mode)');
-    }
-    
-    // Hide all sections first
-    const sections = ['loginScreen', 'teacherDashboard', 'studentCheckin', 'checkinForm', 'loadingIndicator'];
-    sections.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
-    });
-    
-    // Create or update the expired message
-    let container = document.querySelector('.expired-message-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'expired-message-container';
-      container.style.cssText = 'text-align: center; padding: 40px 20px; max-width: 500px; margin: 0 auto;';
-      container.innerHTML = `
-        <div class="checkin-header">
-          <h2>⏰ Attendance Over</h2>
-          <p>GNDU Attendance System</p>
-        </div>
-        <div style="font-size: 64px; margin: 20px 0;">⏰</div>
+    // Replace the entire content with expired message
+    checkinSection.innerHTML = `
+      <div class="checkin-header">
+        <h2>⏰ Attendance Over</h2>
+        <p>GNDU Attendance System</p>
+      </div>
+      <div style="text-align: center; padding: 40px 20px; max-width: 400px; margin: 0 auto;">
+        <div style="font-size: 64px; margin-bottom: 20px;">⏰</div>
         <h2 style="color: #e74c3c; margin-bottom: 15px;">Attendance is Over</h2>
         <p style="font-size: 16px; color: #666; margin-bottom: 20px;">
           This attendance session has expired and is no longer accepting responses.
@@ -2796,116 +2857,69 @@ function displayExpiredSessionMessage() {
         <p style="font-size: 14px; color: #999;">
           Please contact your teacher if you need to mark attendance for this session.
         </p>
-      `;
-      
-      // Find the best container to append to
-      let targetContainer = document.getElementById('studentCheckin');
-      if (!targetContainer) {
-        // If no student checkin section, check for other containers
-        targetContainer = document.querySelector('.container') || document.body;
-      }
-      
-      // Clear and append the message
-      targetContainer.innerHTML = '';
-      targetContainer.style.display = 'block';
-      targetContainer.appendChild(container);
-      
-      console.log('Expired message displayed in container:', targetContainer.id || 'body');
-    }
-  } catch (error) {
-    console.error('Error displaying expired session message:', error);
-    // Fallback to simple alert if DOM manipulation fails
-    alert('This attendance session has expired and is no longer accepting responses.');
+      </div>
+    `;
   }
 }
 
 async function displayStudentCheckin(session) {
-  console.log('Displaying student check-in for session:', session);
-  
-  // Get URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
-  const isExpiredFromUrl = urlParams.get('expired') === 'true';
+  console.log('🎯 Displaying student check-in for session:', session.sessionId);
   
   // Check if session is expired
-  const isExpiredFromSession = session ? isSessionExpired(session) : false;
-  console.log(`Expiry check - URL: ${isExpiredFromUrl}, Session: ${isExpiredFromSession}`);
-  
-  // If either URL or session indicates expired, show expired message
-  if (isExpiredFromUrl || isExpiredFromSession) {
-    // If session is expired but URL doesn't reflect it, update URL
-    if (isExpiredFromSession && !isExpiredFromUrl) {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.set('expired', 'true');
-      window.history.replaceState({}, '', newUrl);
-      console.log('Updated URL to reflect expired session');
-    }
-    
-    displayExpiredSessionMessage();
-    return;
-  }
-  
-  // If we have a valid session, ensure expired flag is removed from URL
-  if (session && urlParams.has('expired')) {
-    urlParams.delete('expired');
-    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-    window.history.replaceState({}, '', newUrl);
-    console.log('Cleared expired flag from URL');
-  }
-  
-  // For logged-out users, ensure we have a valid session object
-  if (!session) {
-    console.error('No session data available');
-    showError('Unable to load session. Please try again or contact support.');
-    return;
-  }
-  
-  // Get references to all relevant elements
-  const loginScreen = document.getElementById('loginScreen');
-  const teacherDashboard = document.getElementById('teacherDashboard');
-  const checkinSection = document.getElementById('studentCheckin');
-  const loadingIndicator = document.getElementById('loadingIndicator');
-  const checkinForm = document.getElementById('checkinForm');
-  
-  // Hide other sections and show loading state
-  if (loginScreen) loginScreen.style.display = 'none';
-  if (teacherDashboard) teacherDashboard.style.display = 'none';
-  if (checkinSection) checkinSection.style.display = 'block';
-  if (loadingIndicator) loadingIndicator.style.display = 'block';
-  if (checkinForm) checkinForm.style.display = 'none';
-  
-  // Check if session is expired using the consolidated function
   if (isSessionExpired(session)) {
-    console.log('Session is expired, showing expired message');
-    // Update URL to reflect expired state for consistency
-    if (!isExpiredFromUrl) {
-      const newUrl = new URL(window.location);
-      newUrl.searchParams.set('expired', 'true');
-      window.history.replaceState({}, '', newUrl);
+    // Hide other sections and show expired message
+    const loginScreen = document.getElementById('loginScreen');
+    const teacherDashboard = document.getElementById('teacherDashboard');
+    const checkinSection = document.getElementById('studentCheckin');
+    
+    if (loginScreen) loginScreen.style.display = 'none';
+    if (teacherDashboard) teacherDashboard.style.display = 'none';
+    if (checkinSection) {
+      checkinSection.style.display = 'block';
+      
+      // Clear the form and show attendance over message
+      const form = document.querySelector('.checkin-form');
+      if (form) {
+        form.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">⏰</div>
+            <h2 style="color: #e74c3c; margin-bottom: 15px;">Attendance is Over</h2>
+            <p style="font-size: 16px; color: #666; margin-bottom: 20px;">
+              This attendance session has expired and is no longer accepting responses.
+            </p>
+            <p style="font-size: 14px; color: #999;">
+              Please contact your teacher if you need to mark attendance for this session.
+            </p>
+          </div>
+        `;
+      }
     }
-    
-    // Hide loading and show expired message
-    if (loadingIndicator) loadingIndicator.style.display = 'none';
-    
-    // Use the centralized expired message function
-    displayExpiredSessionMessage();
     return;
   }
   
   // Store the secret code for validation
   window.sessionSecretCode = session.secretCode || '';
   
-  // Hide loading and show form
-  if (loadingIndicator) loadingIndicator.style.display = 'none';
-  if (checkinForm) checkinForm.style.display = 'block';
+  // Hide other sections
+  const loginScreen = document.getElementById('loginScreen');
+  const teacherDashboard = document.getElementById('teacherDashboard');
+  if (loginScreen) loginScreen.style.display = 'none';
+  if (teacherDashboard) teacherDashboard.style.display = 'none';
   
-  // Add form submission handler
-  const form = document.querySelector('.checkin-form');
-  if (form) {
-    form.onsubmit = function(e) {
-      e.preventDefault();
-      submitAttendance();
-      return false;
-    };
+  // Show the check-in section
+  const checkinSection = document.getElementById('studentCheckin');
+  if (checkinSection) {
+    checkinSection.style.display = 'block';
+    
+    // Add form submission handler
+    const form = document.querySelector('.checkin-form');
+    if (form) {
+      form.onsubmit = function(e) {
+        e.preventDefault();
+        submitAttendance();
+        return false;
+      };
+    }
   }
   
   // Update session info
@@ -2924,7 +2938,7 @@ async function displayStudentCheckin(session) {
   }
   
   // Initialize form elements
-  const studentForm = document.getElementById('studentCheckinForm');
+  const form = document.getElementById('studentCheckinForm');
   const submitBtn = document.getElementById('submitBtn');
   const messageDiv = document.getElementById('checkinMessage');
   
@@ -2932,7 +2946,7 @@ async function displayStudentCheckin(session) {
   let locationDistance = 0;
   
   // Initialize form
-  if (studentForm) studentForm.reset();
+  if (form) form.reset();
   
   // Set initial button state
   if (submitBtn) {
@@ -2957,7 +2971,7 @@ async function displayStudentCheckin(session) {
     
     // If Firebase is not initialized, bypass location verification
     if (!firebaseInitialized) {
-      
+      console.log('Firebase not initialized, bypassing location verification');
       window.locationVerified = true;
       
       if (submitBtn) {
@@ -3045,28 +3059,52 @@ async function submitAttendance() {
     return;
   }
 
-  // Get session data from Firestore
+  // Get session data
   let session;
   try {
-    if (!db) {
-      await initializeFirebase();
+    // First try to get from localStorage
+    const sessionData = localStorage.getItem('attendanceSession_' + urlSessionId);
+    
+    if (sessionData) {
+      // If found in localStorage, use it
+      session = JSON.parse(sessionData);
+      console.log('Found session in localStorage:', session);
+      
+      // If session exists but is missing secretCode, try to get fresh data
+      if (!session.secretCode) {
+        console.log('Local session missing secretCode, fetching from Firestore...');
+        const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
+        if (sessionDoc.exists) {
+          session = sessionDoc.data();
+          console.log('Updated session from Firestore:', session);
+          // Update localStorage with fresh data
+          localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
+        }
+      }
+    } else {
+      // If not in localStorage, try to fetch from Firestore
+      console.log('Session not in localStorage, fetching from Firestore...');
+      const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
+      
+      if (!sessionDoc.exists) {
+        throw new Error('Session not found in database');
+      }
+      
+      session = sessionDoc.data();
+      console.log('Fetched session from Firestore:', session);
+      
+      // Save to localStorage for future use
+      localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
     }
     
-    const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
-    
-    if (!sessionDoc.exists) {
-      throw new Error('Session not found');
+    // Final validation
+    if (!session) {
+      throw new Error('Failed to load session data');
     }
     
-    session = sessionDoc.data();
-    
-    // Convert Firestore Timestamp to Date if needed
-    if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
-      session.expiryTime = session.expiryTime.toDate();
-    }
-    
-    if (!session || !session.secretCode) {
-      throw new Error('Invalid session configuration');
+    if (!session.secretCode) {
+      console.error('Session is missing secretCode:', session);
+      throw new Error('This session is not properly configured. Please contact your teacher.');
     }
   } catch (error) {
     console.error('Error loading session:', error);
@@ -3213,7 +3251,7 @@ async function submitAttendance() {
           .collection('attendance')
           .add(attendanceData);
         
-
+        console.log('Attendance recorded with ID: ', docRef.id);
         
         // Update local storage to prevent duplicate submissions
         localAttendance[student.id] = {
