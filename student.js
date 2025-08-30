@@ -111,7 +111,7 @@ const students = [
     { id: "2024010003797", name: "VINOD PARMAR", father: "VIJAY KUMAR", class_group_no: "G2", lab_group_no: "G3" },
     { id: "2025010009078", name: "VISHAL CHOUDHARY", father: "ASHOK KUMAR", class_group_no: "G2", lab_group_no: "G3" },
     { id: "2025010005793", name: "VISHESH KUMAR", father: "RAJESH KUMAR", class_group_no: "G2", lab_group_no: "G3" },
-    { id: "2025010000492", name: "YASHIKA SONI", father: "SALARIA", class_group_no: "G2", lab_group_no: "G3" },
+    { id: "2025010000492", name: "YASHIKA", father: "SONI SALARIA", class_group_no: "G2", lab_group_no: "G3" },
     { id: "2025010010003", name: "YOGITA", father: "RAJ KUMAR", class_group_no: "G2", lab_group_no: "G3" },
     { id: "2025010007860", name: "YUVRAJ JASSI", father: "HARJINDER KUMAR JASSI", class_group_no: "G2", lab_group_no: "G3" },
     { id: "17032400065", name: "JATIN", father: "SUBHASH CHANDER", class_group_no: "G2", lab_group_no: "G3" }
