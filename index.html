@@ -137,7 +137,7 @@
 
       <div class="controls">
         <div class="search-box">
-          <input type="text" id="search" placeholder="Search students by name or father's name...">
+          <input autocomplete="off" type="text" id="search" placeholder="Search students by name or father's name...">
         </div>
         <div class="share-buttons">
           <button class="share-btn" id="printBtn" title="Print current view">
@@ -182,17 +182,17 @@
 
       <div class="form-group">
         <label for="secretCodeInput">🔑 Secret Code</label>
-        <input type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
+        <input autocomplete = "off" type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
         <small style="color: #666; margin-top: 5px; display: block;">Ask your teacher for the secret code</small>
       </div>
 
       <div class="form-group">
         <label for="studentId">Roll Number</label>
-        <input type="text" id="studentId" placeholder="Enter your Roll Number" required>
+        <input autocomplete = "off" type="text" id="studentId" placeholder="Enter your Roll Number" required>
       </div>
       <div class="form-group">
         <label for="studentName">Full Name</label>
-        <input type="text" id="studentName" placeholder="Enter your Full Name" required>
+        <input autocomplete = "off" type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
       <button type="submit" class="checkin-btn" id="submitBtn" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>
