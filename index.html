@@ -25,16 +25,18 @@
       <p>GNDU Attendance System</p>
     </div>
     <div class="login-form">
-      <div class="form-group">
-        <label for="loginEmail">Email Address</label>
-        <input type="email" id="loginEmail" placeholder="Enter your email" required>
-      </div>
-      <div class="form-group">
-        <label for="loginPassword">Password</label>
-        <input type="password" id="loginPassword" placeholder="Enter your password" required>
-      </div>
-      <button class="login-btn" id="loginBtn" onclick="handleLogin()">Login</button>
-      <div id="loginMessage"></div>
+      <form id="loginForm" onsubmit="event.preventDefault(); handleLogin(); return false;">
+        <div class="form-group">
+          <label for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" placeholder="Enter your email" required>
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter your password" required>
+        </div>
+        <button type="submit" class="login-btn" id="loginBtn">Login</button>
+        <div id="loginMessage"></div>
+      </form>
     </div>
   </div>
 
