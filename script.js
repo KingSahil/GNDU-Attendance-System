@@ -267,9 +267,11 @@ async function loadStudentsFromFirestore() {
 }
 
 // Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.635089713797168;  // GNDU latitude
-const UNIVERSITY_LNG = 74.82462040523451;  // GNDU longitude
+const UNIVERSITY_LAT = 31.648973;  // GNDU latitude
+const UNIVERSITY_LNG = 74.818704;  // GNDU longitude
 const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
+const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
+const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
 // Timetable data
 const timetable = {
@@ -780,6 +782,32 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+function calculateAveragePosition(positions) {
+  if (!positions || positions.length === 0) {
+    throw new Error('No position data provided');
+  }
+
+  let totalLat = 0;
+  let totalLng = 0;
+  let totalAccuracy = 0;
+  let totalWeight = 0;
+
+  // Calculate weighted average (higher accuracy = higher weight)
+  positions.forEach(pos => {
+    const weight = 1 / Math.max(1, pos.accuracy); // Avoid division by zero
+    totalLat += pos.latitude * weight;
+    totalLng += pos.longitude * weight;
+    totalAccuracy += pos.accuracy;
+    totalWeight += weight;
+  });
+
+  return {
+    latitude: totalLat / totalWeight,
+    longitude: totalLng / totalWeight,
+    accuracy: totalAccuracy / positions.length
+  };
+}
+
 function showLocationStatus(message, status, isLoading = false) {
   const statusElement = document.getElementById('locationStatus');
   if (!statusElement) return;
@@ -856,7 +884,7 @@ async function checkUserLocation(retryCount = 0) {
         }
         
         if (distance <= ALLOWED_RADIUS_METERS) {
-          const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
+          const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${distanceRounded}m from campus)`;
           
           showLocationStatus(successMsg, 'allowed');
           resolve({ success: true, distance: distanceRounded });
@@ -3070,7 +3098,7 @@ async function displayStudentCheckin(session) {
           : `${Math.round(window.locationDistance)} meters away`;
         showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'error');
       } else {
-        showLocationStatus('✅ Location verified - You are inside the campus', 'success');
+        showLocationStatus(`✅ Location verified - You are inside the campus (${Math.round(window.locationDistance)}m from GNDU)`, 'success');
       }
     }
   } catch (error) {
