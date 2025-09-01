@@ -269,7 +269,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 100;  // 100 meters radius
+const ALLOWED_RADIUS_METERS = 200;  // 100 meters radius
 const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
