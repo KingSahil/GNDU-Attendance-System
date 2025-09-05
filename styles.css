@@ -546,6 +546,46 @@ tbody tr:nth-child(even) {
   font-weight: 500;
 }
 
+/* Manual Present Button - styled like absent status */
+.manual-present-btn {
+  background: #f39c12 !important;
+  color: white !important;
+  border: none !important;
+  padding: 6px 12px !important;
+  border-radius: 20px !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: background-color 0.2s ease, transform 0.1s ease !important;
+  margin-left: 8px !important;
+  white-space: nowrap !important;
+}
+
+.manual-present-btn:hover {
+  background: #e67e22 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(243, 156, 18, 0.3);
+}
+
+.manual-present-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(243, 156, 18, 0.3);
+}
+
+.manual-present-btn:disabled {
+  background: #6c757d !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+
+/* Status container for absent students */
+.status-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .current-class-info {
   background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
   color: white;
@@ -964,6 +1004,19 @@ tbody tr:nth-child(even) {
   th, td {
     padding: 10px 8px;
     font-size: 0.8rem;
+  }
+
+  /* Mobile styles for manual present button */
+  .manual-present-btn {
+    font-size: 0.8rem !important;
+    padding: 5px 10px !important;
+    margin-left: 4px !important;
+  }
+  
+  .status-container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 
   .share-buttons {

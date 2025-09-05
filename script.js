@@ -2283,6 +2283,98 @@ function stopListeningToAttendance() {
   }
 }
 
+// Function to manually mark a student as present
+async function markStudentPresentManually(studentId, studentName) {
+  try {
+    // Confirm with the teacher before marking
+    const confirmMsg = `Are you sure you want to manually mark "${studentName}" as present?`;
+    if (!confirm(confirmMsg)) {
+      return;
+    }
+
+    // Check if there's an active session
+    if (!sessionId && !currentSession) {
+      showNotification('Please start an attendance session first.', 'error');
+      return;
+    }
+
+    const activeSessionId = sessionId || (currentSession && currentSession.sessionId);
+    if (!activeSessionId) {
+      showNotification('No active session found. Please start an attendance session.', 'error');
+      return;
+    }
+
+    // Update local attendance state immediately
+    attendance[studentId] = true;
+    attendanceTime[studentId] = new Date().toLocaleTimeString();
+    
+    // Update UI
+    updateStats();
+    renderTable();
+
+    // Show loading notification
+    showNotification('Marking student as present...', 'info');
+
+    // Save to Firebase if connected
+    if (db && firebaseInitialized) {
+      try {
+        const currentTime = new Date();
+        const attendanceData = {
+          studentId: studentId.toString(),
+          studentName: studentName,
+          time: currentTime.toLocaleTimeString(),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+          localTimestamp: currentTime.toISOString(),
+          status: 'present',
+          manuallyMarked: true,
+          markedBy: 'teacher',
+          sessionId: activeSessionId
+        };
+
+        // Save to both the session document and attendance subcollection
+        const sessionRef = db.collection('attendanceSessions').doc(activeSessionId);
+        const attendanceRef = sessionRef.collection('attendance').doc(studentId);
+
+        // Update session document
+        await sessionRef.update({
+          [`attendance.${studentId}`]: true
+        });
+
+        // Save detailed attendance record
+        await attendanceRef.set(attendanceData);
+
+        // Update local storage
+        const attendanceKey = `attendance_${activeSessionId}_${studentId}`;
+        localStorage.setItem(attendanceKey, 'true');
+
+        showNotification(`✅ ${studentName} has been marked as present`, 'success');
+      } catch (error) {
+        console.error('Error saving manual attendance to Firebase:', error);
+        showNotification('Attendance marked locally. Will sync when connection is restored.', 'warning');
+        
+        // Save to local storage as backup
+        const attendanceKey = `attendance_${activeSessionId}_${studentId}`;
+        localStorage.setItem(attendanceKey, 'true');
+      }
+    } else {
+      // Save to local storage if Firebase is not available
+      const attendanceKey = `attendance_${activeSessionId}_${studentId}`;
+      localStorage.setItem(attendanceKey, 'true');
+      showNotification('Attendance marked locally. Will sync when connection is restored.', 'warning');
+    }
+
+  } catch (error) {
+    console.error('Error in manual attendance marking:', error);
+    showNotification('Failed to mark attendance. Please try again.', 'error');
+    
+    // Revert local state on error
+    attendance[studentId] = false;
+    delete attendanceTime[studentId];
+    updateStats();
+    renderTable();
+  }
+}
+
 function updateStats() {
   const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
   
@@ -2345,10 +2437,53 @@ function renderTable() {
   });
     const td4 = document.createElement('td'); td4.textContent = String(student.father || '');
     const td5 = document.createElement('td');
-    const statusSpan = document.createElement('span');
-    if (attendance[student.id]) { statusSpan.className = 'status-present'; statusSpan.textContent = 'Present'; }
-    else { statusSpan.className = 'status-absent'; statusSpan.textContent = 'Absent'; }
-    td5.appendChild(statusSpan);
+    if (attendance[student.id]) {
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'status-present';
+      statusSpan.textContent = 'Present';
+      td5.appendChild(statusSpan);
+    } else {
+      const statusContainer = document.createElement('div');
+      statusContainer.style.display = 'flex';
+      statusContainer.style.alignItems = 'center';
+      statusContainer.style.gap = '8px';
+      
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'status-absent';
+      statusSpan.textContent = 'Absent';
+      
+      const presentBtn = document.createElement('button');
+      presentBtn.textContent = 'Mark Present';
+      presentBtn.className = 'manual-present-btn';
+      presentBtn.style.cssText = `
+        background-color: #28a745;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      `;
+      presentBtn.title = 'Manually mark this student as present';
+      
+      presentBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        markStudentPresentManually(student.id, student.name);
+      });
+      
+      presentBtn.addEventListener('mouseenter', function() {
+        this.style.backgroundColor = '#218838';
+      });
+      
+      presentBtn.addEventListener('mouseleave', function() {
+        this.style.backgroundColor = '#28a745';
+      });
+      
+      statusContainer.appendChild(statusSpan);
+      statusContainer.appendChild(presentBtn);
+      td5.appendChild(statusContainer);
+    }
     const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
     row.appendChild(td1); row.appendChild(td2); row.appendChild(td3); row.appendChild(td4); row.appendChild(td5); row.appendChild(td6);
     tbody.appendChild(row);
