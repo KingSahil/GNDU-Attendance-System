@@ -35,6 +35,15 @@
           <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
         </div>
         <button type="submit" class="login-btn" id="loginBtn">Login</button>
+        <div class="guest-login-section">
+          <div class="divider">
+            <span>or</span>
+          </div>
+          <button type="button" class="guest-btn" id="guestBtn" onclick="handleGuestLogin()">
+            👤 Continue as Student (Guest)
+          </button>
+          <small class="guest-info">View previous attendance sessions without starting new ones</small>
+        </div>
         <div id="loginMessage"></div>
       </form>
     </div>
@@ -169,6 +178,93 @@
       <div class="scroll-hint">💡 Scroll to view all columns • Click column headers to sort • Use "Mark Present" button for manual attendance</div>
     </div>
   </div>
+
+  <!-- Student Guest Dashboard -->
+  <div class="container" id="studentGuestDashboard" style="display: none;">
+    <div class="header">
+      <h1>GNDU Attendance System</h1>
+      <p>Department of Computer Engineering & Technology</p>
+      <div class="user-info">
+        <span class="user-badge">👤 Student View (Guest)</span>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="guest-info-banner">
+      <h3>📚 Previous Attendance Sessions</h3>
+      <p>View attendance records from previous sessions. You cannot create new sessions or mark attendance manually.</p>
+    </div>
+
+    <div class="controls">
+      <div class="search-box">
+        <input autocomplete="off" type="text" id="guestSearch" placeholder="Search students by name or father's name...">
+      </div>
+      <div class="share-buttons">
+        <button class="share-btn" id="guestPrintBtn" title="Print current view">
+          🖨️ Print
+        </button>
+        <button class="share-btn" id="guestExportBtn" title="Export current view to Excel (.xlsx)">
+          📥 Export to Excel
+        </button>
+      </div>
+    </div>
+
+    <div class="session-selector">
+      <div class="form-group">
+        <label for="guestDateSelect">Select Date:</label>
+        <input type="date" id="guestDateSelect" onchange="loadGuestAttendance()">
+      </div>
+      <div class="form-group">
+        <label for="guestSubjectSelect">Select Subject:</label>
+        <select id="guestSubjectSelect" onchange="loadGuestAttendance()">
+          <option value="">Choose a subject...</option>
+          <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
+          <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
+          <option value="MTL1001">MTL1001 - Mathematics I</option>
+          <option value="PHL1083">PHL1083 - Physics</option>
+          <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
+          <option value="PBL1022">PBL1022 - Basic Punjabi</option>
+          <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
+        </select>
+      </div>
+      <div id="guestSessionStatus" class="session-status" style="display: none;"></div>
+    </div>
+
+    <div class="stats" id="guestStatsSection" style="display: none;">
+      <div class="stat-card">
+        <div class="stat-number" id="guestTotalStudents">0</div>
+        <div class="stat-label">Total Students</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="guestPresentCount">0</div>
+        <div class="stat-label">Present</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="guestAbsentCount">0</div>
+        <div class="stat-label">Absent</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="guestAttendancePercent">0%</div>
+        <div class="stat-label">Attendance</div>
+      </div>
+    </div>
+
+    <div class="table-container" id="guestTableContainer" style="display: none;">
+      <table>
+        <thead>
+          <tr>
+            <th id="guestHeaderRoll" class="sortable-header">Roll Number</th>
+            <th id="guestHeaderId" class="sortable-header">Student ID</th>
+            <th id="guestHeaderName" class="sortable-header">Name</th>
+            <th id="guestHeaderFather" class="sortable-header">Father's Name</th>
+            <th id="guestHeaderStatus" class="sortable-header">Status</th>
+            <th id="guestHeaderTime" class="sortable-header">Check-in Time</th>
+          </tr>
+        </thead>
+        <tbody id="guestStudentTable"></tbody>
+      </table>
+    </div>
+    <div class="scroll-hint" id="guestScrollHint" style="display: none;">💡 Scroll to view all columns • Click column headers to sort</div>
 
   <!-- Student Check-in Interface -->
   <div class="checkin-container" id="studentCheckin" style="display: none;">

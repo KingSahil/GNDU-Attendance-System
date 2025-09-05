@@ -51,18 +51,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     showDashboard();
   } else {
-    // Otherwise, optimistically show dashboard instantly if we have a cached user
-    // to avoid login screen flicker while Firebase initializes. Auth listener will
-    // correct the view if the session is actually invalid/expired.
-    const cachedUser = localStorage.getItem('user');
-    if (cachedUser) {
-      
-      showDashboard();
+    // Check for guest mode first
+    const isGuestMode = localStorage.getItem('guestMode') === 'true';
+    if (isGuestMode) {
+      showGuestDashboard();
+      // No need to load previous sessions anymore - user selects date/subject
     } else {
-      // Fall back to showing login screen
-      showLoginScreen();
+      // Otherwise, optimistically show dashboard instantly if we have a cached user
+      // to avoid login screen flicker while Firebase initializes. Auth listener will
+      // correct the view if the session is actually invalid/expired.
+      const cachedUser = localStorage.getItem('user');
+      if (cachedUser) {
+        
+        showDashboard();
+      } else {
+        // Fall back to showing login screen
+        showLoginScreen();
+      }
     }
-
   }
   
   // Initialize Firebase in the background
@@ -395,8 +401,17 @@ window.handleLogin = async function() {
 async function handleLogout() {
   if (confirm('Are you sure you want to logout?')) {
     try {
-      // Sign out from Firebase
-      await auth.signOut();
+      // Check if in guest mode
+      const isGuestMode = localStorage.getItem('guestMode') === 'true';
+      
+      if (!isGuestMode) {
+        // Sign out from Firebase for authenticated users
+        await auth.signOut();
+      }
+      
+      // Clear guest mode flags
+      localStorage.removeItem('guestMode');
+      localStorage.removeItem('userType');
       
       // Clear any existing sessions
       sessionId = null;
@@ -418,6 +433,7 @@ async function handleLogout() {
       // Show login screen and hide others
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('teacherDashboard').style.display = 'none';
+      document.getElementById('studentGuestDashboard').style.display = 'none';
       document.getElementById('studentCheckin').style.display = 'none';
       
       // Reset any other UI elements if needed
@@ -511,6 +527,790 @@ function handlePageDisplay(user) {
   }
 }
 
+// ---------------- Guest Login Functions ----------------
+function handleGuestLogin() {
+  // Set guest mode flag
+  localStorage.setItem('guestMode', 'true');
+  localStorage.setItem('userType', 'student');
+  
+  // Show guest dashboard
+  showGuestDashboard();
+  
+  // Load previous sessions
+  loadPreviousSessions();
+}
+
+function showGuestDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('teacherDashboard').style.display = 'none';
+  document.getElementById('studentGuestDashboard').style.display = 'block';
+  document.getElementById('studentCheckin').style.display = 'none';
+  
+  document.body.classList.remove('login-view', 'student-checkin-page', 'dashboard-view');
+  document.body.classList.add('guest-dashboard-view');
+  
+  // Initialize guest dashboard event listeners
+  initializeGuestDashboard();
+}
+
+function initializeGuestDashboard() {
+  // Search functionality
+  const searchInput = document.getElementById('guestSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', filterGuestTable);
+  }
+  
+  // Print functionality
+  const printBtn = document.getElementById('guestPrintBtn');
+  if (printBtn) {
+    printBtn.addEventListener('click', printGuestView);
+  }
+  
+  // Export functionality
+  const exportBtn = document.getElementById('guestExportBtn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportGuestToExcel);
+  }
+  
+  // Initialize guest table sorting
+  initializeGuestTableSorting();
+  
+  // Initialize guest student details modal
+  initializeGuestStudentDetails();
+  
+  // Add debugging function to window for console access
+  window.debugAttendanceSessions = async function(date = null) {
+    try {
+      if (!db || !firebaseInitialized) {
+        console.log('Database not available');
+        return;
+      }
+      
+      let queryDate = date;
+      
+      // If date is provided in YYYY-MM-DD format, convert it to DD/MM/YYYY
+      if (date && date.includes('-')) {
+        const parts = date.split('-');
+        if (parts.length === 3) {
+          queryDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+          console.log(`Converting date: ${date} -> ${queryDate}`);
+        }
+      }
+      
+      let query = db.collection('attendanceSessions');
+      if (queryDate) {
+        query = query.where('date', '==', queryDate);
+      }
+      
+      const snapshot = await query.get();
+      console.log(`Found ${snapshot.size} sessions${queryDate ? ` for date ${queryDate}` : ''}`);
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        console.log('Session:', {
+          id: doc.id,
+          date: data.date,
+          subjectCode: data.subjectCode,
+          subjectName: data.subjectName,
+          subject: data.subject,
+          timeSlot: data.timeSlot,
+          teacherName: data.teacherName
+        });
+      });
+      
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error('Error debugging sessions:', error);
+    }
+  };
+  
+  console.log('Guest dashboard initialized. Use debugAttendanceSessions("2025-09-01") in console to debug sessions.');
+}
+
+async function loadPreviousSessions() {
+  // This function is no longer needed but kept for compatibility
+  // The new system uses date + subject selection
+}
+
+// ---------------- Guest Table Sorting Functions ----------------
+let guestSortColumn = null;
+let guestSortAsc = true;
+let guestStatusSortMode = null;
+
+function initializeGuestTableSorting() {
+  const headers = {
+    'guestHeaderRoll': 'roll',
+    'guestHeaderId': 'id', 
+    'guestHeaderName': 'name',
+    'guestHeaderFather': 'father',
+    'guestHeaderStatus': 'status',
+    'guestHeaderTime': 'time'
+  };
+
+  Object.entries(headers).forEach(([headerId, columnKey]) => {
+    const header = document.getElementById(headerId);
+    if (!header) return;
+    
+    header.dataset.originalText = header.textContent;
+    
+    header.addEventListener('click', function() {
+      Object.keys(headers).forEach(id => {
+        const h = document.getElementById(id);
+        if (h) {
+          h.classList.remove('sorted');
+          h.textContent = h.dataset.originalText;
+        }
+      });
+
+      if (columnKey === 'status') {
+        if (guestSortColumn !== 'status') {
+          guestSortColumn = 'status';
+          guestStatusSortMode = 'presentFirst';
+          header.textContent = 'Status (Present First)';
+        } else if (guestStatusSortMode === 'presentFirst') {
+          guestStatusSortMode = 'absentFirst';
+          header.textContent = 'Status (Absent First)';
+        } else {
+          guestSortColumn = null;
+          guestStatusSortMode = null;
+          header.textContent = header.dataset.originalText;
+        }
+      } else {
+        if (guestSortColumn === columnKey) {
+          guestSortAsc = !guestSortAsc;
+        } else {
+          guestSortColumn = columnKey;
+          guestSortAsc = false;
+          if (columnKey !== 'name') {
+            guestSortAsc = true;
+          }
+        }
+        guestStatusSortMode = null;
+        
+        const indicator = guestSortAsc ? ' ▲' : ' ▼';
+        header.textContent = header.dataset.originalText + indicator;
+      }
+
+      if (guestSortColumn) {
+        header.classList.add('sorted');
+      }
+
+      // Re-render the current guest table with sorting
+      const dateInput = document.getElementById('guestDateSelect');
+      const subjectSelect = document.getElementById('guestSubjectSelect');
+      
+      if (dateInput && subjectSelect && dateInput.value && subjectSelect.value) {
+        loadGuestAttendance();
+      }
+    });
+  });
+}
+
+function sortGuestStudents(data, attendance, attendanceTime) {
+  if (!guestSortColumn) return data;
+
+  if (guestSortColumn === 'status') {
+    return data.sort((a, b) => {
+      const aPresent = attendance[a.id] === true;
+      const bPresent = attendance[b.id] === true;
+      
+      if (guestStatusSortMode === 'presentFirst') {
+        if (aPresent && !bPresent) return -1;
+        if (!aPresent && bPresent) return 1;
+      } else if (guestStatusSortMode === 'absentFirst') {
+        if (!aPresent && bPresent) return -1;
+        if (aPresent && !bPresent) return 1;
+      }
+      return 0;
+    });
+  } else if (guestSortColumn === 'time') {
+    return data.sort((a, b) => {
+      const aTime = attendanceTime[a.id] || '';
+      const bTime = attendanceTime[b.id] || '';
+      
+      if (aTime === '' && bTime !== '') return guestSortAsc ? 1 : -1;
+      if (bTime === '' && aTime !== '') return guestSortAsc ? -1 : 1;
+      if (aTime === '' && bTime === '') return 0;
+      
+      return guestSortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
+    });
+  } else if (guestSortColumn === 'roll') {
+    return data.sort((a, b) => {
+      const ra = getRollNumberById(a.id) || 0;
+      const rb = getRollNumberById(b.id) || 0;
+      
+      return guestSortAsc ? (ra - rb) : (rb - ra);
+    });
+  }
+  
+  return data.sort(compareValues(guestSortColumn, guestSortAsc));
+}
+
+function compareValues(key, asc) {
+  return function innerSort(a, b) {
+    if (!a.hasOwnProperty(key) || !b.hasOwnProperty(key)) {
+      return 0;
+    }
+
+    const varA = (typeof a[key] === 'string') ? a[key].toUpperCase() : a[key];
+    const varB = (typeof b[key] === 'string') ? b[key].toUpperCase() : b[key];
+
+    let comparison = 0;
+    if (varA > varB) {
+      comparison = 1;
+    } else if (varA < varB) {
+      comparison = -1;
+    }
+    return (asc) ? comparison : (comparison * -1);
+  };
+}
+
+// ---------------- Guest Student Details Functions ----------------
+function initializeGuestStudentDetails() {
+  // Close modal functionality
+  const closeBtn = document.getElementById('closeStudentDetails');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeGuestStudentDetails);
+  }
+  
+  // Close modal when clicking outside
+  const modal = document.getElementById('studentDetailsModal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        closeGuestStudentDetails();
+      }
+    });
+  }
+  
+  // ESC key to close modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('studentDetailsModal').style.display === 'flex') {
+      closeGuestStudentDetails();
+    }
+  });
+}
+
+function openGuestStudentDetails(studentId) {
+  const student = students.find(s => s.id === studentId);
+  if (!student) return;
+  
+  // Set student basic info
+  document.getElementById('metaId').textContent = studentId;
+  document.getElementById('studentDetailsName').textContent = student.name || `Student ${studentId}`;
+  document.getElementById('metaFather').textContent = student.father || '-';
+  
+  // Show modal
+  const modal = document.getElementById('studentDetailsModal');
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+  
+  // Load detailed attendance data
+  loadStudentDetailsForGuest(studentId);
+}
+
+function closeGuestStudentDetails() {
+  const modal = document.getElementById('studentDetailsModal');
+  modal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+}
+
+async function loadStudentDetailsForGuest(studentId) {
+  try {
+    if (!db || !firebaseInitialized) {
+      document.getElementById('overall').textContent = 'Database unavailable';
+      return;
+    }
+    
+    // Load all sessions
+    const sessionsSnapshot = await db.collection('attendanceSessions').get();
+    const allSessions = sessionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    if (allSessions.length === 0) {
+      document.getElementById('overall').textContent = '0%';
+      document.getElementById('totalSessions').textContent = '0';
+      document.getElementById('subjectList').innerHTML = '<div class="subject-item">No sessions found</div>';
+      return;
+    }
+    
+    // Load attendance for this student across all sessions
+    const attendanceDocs = await fetchAllAttendanceDocsForStudentWithFallback(studentId, allSessions);
+    
+    // Calculate overall and per-subject attendance
+    const sessionById = new Map(allSessions.map(s => [s.id, s]));
+    const perSubject = new Map();
+    let totalPresent = 0;
+    
+    // Helper function to normalize subject names
+    function normalizeSubjectName(subjectString) {
+      if (!subjectString) return 'General';
+      const cleanName = subjectString.replace(/^[A-Z]{2,4}\d{4}\s*-\s*/i, '').trim();
+      return cleanName || subjectString;
+    }
+    
+    // Count attendance per subject
+    for (const att of attendanceDocs) {
+      const session = sessionById.get(att.sessionId || att._sessionId);
+      const rawSubjName = att.subjectName || (session && (session.subjectName || session.subject)) || (att.subjectCode || 'General');
+      const key = normalizeSubjectName(rawSubjName);
+      const entry = perSubject.get(key) || { total: 0, present: 0 };
+      entry.present += 1;
+      perSubject.set(key, entry);
+      totalPresent += 1;
+    }
+    
+    // Count total sessions per subject
+    const subjectSessionCounts = new Map();
+    for (const s of allSessions) {
+      const rawSubj = s.subjectName || s.subject || s.subjectCode || 'General';
+      const normalizedSubj = normalizeSubjectName(rawSubj);
+      subjectSessionCounts.set(normalizedSubj, (subjectSessionCounts.get(normalizedSubj) || 0) + 1);
+    }
+    
+    for (const [subject, total] of subjectSessionCounts.entries()) {
+      const entry = perSubject.get(subject) || { total: 0, present: 0 };
+      entry.total = total;
+      perSubject.set(subject, entry);
+    }
+    
+    // Update UI
+    const totalSessions = allSessions.length;
+    const attendancePercent = totalSessions > 0 ? Math.round((totalPresent / totalSessions) * 100) : 0;
+    
+    document.getElementById('overall').textContent = `${attendancePercent}%`;
+    document.getElementById('totalSessions').textContent = totalSessions;
+    
+    // Render subject list
+    const subjectList = document.getElementById('subjectList');
+    if (subjectList) {
+      subjectList.innerHTML = '';
+      const subjectsSorted = Array.from(perSubject.entries()).sort((a,b) => String(a[0]).localeCompare(String(b[0])));
+      
+      for (const [subject, agg] of subjectsSorted) {
+        const div = document.createElement('div');
+        div.className = 'subject-item';
+        
+        const left = document.createElement('div');
+        left.innerHTML = `<span class="subject-name">${subject}</span><br/><small>${agg.present}/${agg.total} present</small>`;
+        
+        const right = document.createElement('div');
+        const pill = document.createElement('span');
+        const percentage = agg.total > 0 ? (agg.present / agg.total) : 0;
+        
+        if (percentage >= 0.75) pill.className = 'pill green';
+        else if (percentage >= 0.5) pill.className = 'pill orange';
+        else pill.className = 'pill red';
+        
+        pill.textContent = agg.total > 0 ? Math.round((agg.present / agg.total) * 100) + '%' : '0%';
+        right.appendChild(pill);
+        
+        div.appendChild(left);
+        div.appendChild(right);
+        subjectList.appendChild(div);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error loading student details:', error);
+    document.getElementById('overall').textContent = 'Error loading data';
+  }
+}
+
+async function loadGuestAttendance() {
+  const dateInput = document.getElementById('guestDateSelect');
+  const subjectSelect = document.getElementById('guestSubjectSelect');
+  const statusDiv = document.getElementById('guestSessionStatus');
+  
+  const selectedDate = dateInput.value;
+  const selectedSubject = subjectSelect.value;
+  
+  // Hide content if either date or subject is not selected
+  if (!selectedDate || !selectedSubject) {
+    document.getElementById('guestStatsSection').style.display = 'none';
+    document.getElementById('guestTableContainer').style.display = 'none';
+    document.getElementById('guestScrollHint').style.display = 'none';
+    if (statusDiv) {
+      statusDiv.style.display = 'none';
+    }
+    return;
+  }
+
+  try {
+    if (!db || !firebaseInitialized) {
+      showGuestStatus('Database not available. Please check your connection.', 'error');
+      return;
+    }
+
+    showGuestStatus('Loading attendance data...', 'info');
+
+    // Convert date from YYYY-MM-DD to DD/MM/YYYY format (as stored in Firebase)
+    const dateParts = selectedDate.split('-'); // ["2025", "09", "01"]
+    const firebaseDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // "01/09/2025"
+    
+    console.log(`Converting date: ${selectedDate} -> ${firebaseDate}`);
+
+    // Get the subject name from the subjectNames object
+    const subjectName = subjectNames[selectedSubject] || selectedSubject;
+
+    // Try multiple query strategies to find the session
+    let sessionsSnapshot = null;
+    
+    // Strategy 1: Query by date and subjectCode
+    console.log(`Trying query 1: date=${firebaseDate}, subjectCode=${selectedSubject}`);
+    sessionsSnapshot = await db.collection('attendanceSessions')
+      .where('date', '==', firebaseDate)
+      .where('subjectCode', '==', selectedSubject)
+      .get();
+
+    // Strategy 2: If not found, try with subjectName
+    if (sessionsSnapshot.empty) {
+      console.log(`Trying query 2: date=${firebaseDate}, subjectName=${subjectName}`);
+      sessionsSnapshot = await db.collection('attendanceSessions')
+        .where('date', '==', firebaseDate)
+        .where('subjectName', '==', subjectName)
+        .get();
+    }
+
+    // Strategy 3: If still not found, try with subject field
+    if (sessionsSnapshot.empty) {
+      console.log(`Trying query 3: date=${firebaseDate}, subject=${selectedSubject}`);
+      sessionsSnapshot = await db.collection('attendanceSessions')
+        .where('date', '==', firebaseDate)
+        .where('subject', '==', selectedSubject)
+        .get();
+    }
+
+    // Strategy 4: If still not found, try with subject field as subjectName
+    if (sessionsSnapshot.empty) {
+      console.log(`Trying query 4: date=${firebaseDate}, subject=${subjectName}`);
+      sessionsSnapshot = await db.collection('attendanceSessions')
+        .where('date', '==', firebaseDate)
+        .where('subject', '==', subjectName)
+        .get();
+    }
+
+    // Strategy 5: If still not found, get all sessions for that date and filter manually
+    if (sessionsSnapshot.empty) {
+      console.log(`Trying query 5: date=${firebaseDate}, manual filtering`);
+      sessionsSnapshot = await db.collection('attendanceSessions')
+        .where('date', '==', firebaseDate)
+        .get();
+      
+      // Filter manually for subject matches
+      if (!sessionsSnapshot.empty) {
+        const matchingSessions = [];
+        sessionsSnapshot.forEach(doc => {
+          const data = doc.data();
+          const docSubjectCode = data.subjectCode || '';
+          const docSubjectName = data.subjectName || '';
+          const docSubject = data.subject || '';
+          
+          if (docSubjectCode === selectedSubject || 
+              docSubjectName === subjectName || 
+              docSubject === selectedSubject || 
+              docSubject === subjectName ||
+              docSubjectCode.toLowerCase() === selectedSubject.toLowerCase() ||
+              docSubjectName.toLowerCase() === subjectName.toLowerCase()) {
+            matchingSessions.push(doc);
+          }
+        });
+        
+        if (matchingSessions.length > 0) {
+          // Create a mock snapshot with matching sessions
+          sessionsSnapshot = {
+            empty: false,
+            docs: matchingSessions
+          };
+        }
+      }
+    }
+
+    if (sessionsSnapshot.empty) {
+      showGuestStatus(`No attendance session found for ${firebaseDate} - ${selectedSubject}`, 'error');
+      hideGuestContent();
+      return;
+    }
+
+    // Get the first matching session (should typically be only one per date/subject)
+    const sessionDoc = sessionsSnapshot.docs[0];
+    const sessionData = sessionDoc.data();
+    const sessionId = sessionDoc.id;
+    
+    console.log('Found session:', sessionData);
+    
+    // Load attendance data for this session
+    const attendanceSnapshot = await db.collection('attendanceSessions')
+      .doc(sessionId)
+      .collection('attendance')
+      .get();
+
+    // Build attendance object
+    const sessionAttendance = {};
+    const sessionAttendanceTime = {};
+    
+    attendanceSnapshot.forEach(doc => {
+      const data = doc.data();
+      sessionAttendance[doc.id] = true;
+      sessionAttendanceTime[doc.id] = data.time || 'Unknown';
+    });
+
+    // Also check main session document for attendance
+    if (sessionData.attendance) {
+      Object.keys(sessionData.attendance).forEach(studentId => {
+        if (sessionData.attendance[studentId] === true) {
+          sessionAttendance[studentId] = true;
+          if (!sessionAttendanceTime[studentId]) {
+            sessionAttendanceTime[studentId] = 'Present';
+          }
+        }
+      });
+    }
+
+    // Show success message with session details
+    const displaySubjectName = sessionData.subjectName || subjectName;
+    const timeSlot = sessionData.timeSlot || 'Unknown Time';
+    const teacherName = sessionData.teacherName || 'Unknown Teacher';
+    
+    showGuestStatus(`Found session: ${displaySubjectName} - ${timeSlot} (Teacher: ${teacherName})`, 'success');
+
+    // Render the guest table
+    renderGuestTable(sessionAttendance, sessionAttendanceTime);
+    updateGuestStats(sessionAttendance);
+    
+    // Show the table sections
+    document.getElementById('guestStatsSection').style.display = 'grid';
+    document.getElementById('guestTableContainer').style.display = 'block';
+    document.getElementById('guestScrollHint').style.display = 'block';
+
+  } catch (error) {
+    console.error('Error loading attendance:', error);
+    showGuestStatus('Failed to load attendance data. Please try again.', 'error');
+    hideGuestContent();
+  }
+}
+
+function showGuestStatus(message, type) {
+  const statusDiv = document.getElementById('guestSessionStatus');
+  if (statusDiv) {
+    statusDiv.textContent = message;
+    statusDiv.className = `session-status ${type}`;
+    statusDiv.style.display = 'block';
+  }
+}
+
+function hideGuestContent() {
+  document.getElementById('guestStatsSection').style.display = 'none';
+  document.getElementById('guestTableContainer').style.display = 'none';
+  document.getElementById('guestScrollHint').style.display = 'none';
+}
+
+async function loadSelectedSession() {
+  // This function is replaced by loadGuestAttendance
+  // Kept for backward compatibility
+  loadGuestAttendance();
+}
+
+function renderGuestTable(attendance, attendanceTime) {
+  const tbody = document.getElementById('guestStudentTable');
+  if (!tbody) return;
+
+  let filteredStudents = applyGuestFilters();
+  
+  // Apply sorting
+  filteredStudents = sortGuestStudents(filteredStudents, attendance, attendanceTime);
+  
+  tbody.innerHTML = '';
+  
+  filteredStudents.forEach(student => {
+    const row = document.createElement('tr');
+    if (attendance[student.id]) row.classList.add('present');
+    
+    const td1 = document.createElement('td'); 
+    td1.textContent = String(getRollNumberById(student.id));
+    
+    const td2 = document.createElement('td'); 
+    td2.textContent = String(student.id);
+    
+    const td3 = document.createElement('td'); 
+    const nameButton = document.createElement('button');
+    nameButton.className = 'name-link';
+    nameButton.textContent = String(student.name || '');
+    nameButton.onclick = () => openGuestStudentDetails(student.id);
+    td3.appendChild(nameButton);
+    
+    const td4 = document.createElement('td'); 
+    td4.textContent = String(student.father || '');
+    
+    const td5 = document.createElement('td');
+    const statusSpan = document.createElement('span');
+    if (attendance[student.id]) {
+      statusSpan.className = 'status-present';
+      statusSpan.textContent = 'Present';
+    } else {
+      statusSpan.className = 'status-absent';
+      statusSpan.textContent = 'Absent';
+    }
+    td5.appendChild(statusSpan);
+    
+    const td6 = document.createElement('td'); 
+    td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
+    
+    row.appendChild(td1);
+    row.appendChild(td2);
+    row.appendChild(td3);
+    row.appendChild(td4);
+    row.appendChild(td5);
+    row.appendChild(td6);
+    
+    tbody.appendChild(row);
+  });
+}
+
+function applyGuestFilters() {
+  if (!students || !Array.isArray(students)) return [];
+  
+  const searchTerm = document.getElementById('guestSearch')?.value.toLowerCase() || '';
+  
+  if (!searchTerm) return students;
+  
+  return students.filter(student => {
+    const name = (student.name || '').toLowerCase();
+    const father = (student.father || '').toLowerCase();
+    const id = (student.id || '').toString().toLowerCase();
+    
+    return name.includes(searchTerm) || 
+           father.includes(searchTerm) || 
+           id.includes(searchTerm);
+  });
+}
+
+function filterGuestTable() {
+  // Re-render table with current attendance data
+  const dateInput = document.getElementById('guestDateSelect');
+  const subjectSelect = document.getElementById('guestSubjectSelect');
+  
+  if (dateInput && subjectSelect && dateInput.value && subjectSelect.value) {
+    loadGuestAttendance();
+  }
+}
+
+function updateGuestStats(attendance) {
+  const allStudents = students || [];
+  const presentStudents = allStudents.filter(student => attendance[student.id]).length;
+  const totalStudents = allStudents.length;
+  const absentStudents = totalStudents - presentStudents;
+  const attendancePercent = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
+
+  document.getElementById('guestTotalStudents').textContent = totalStudents;
+  document.getElementById('guestPresentCount').textContent = presentStudents;
+  document.getElementById('guestAbsentCount').textContent = absentStudents;
+  document.getElementById('guestAttendancePercent').textContent = attendancePercent + '%';
+}
+
+function printGuestView() {
+  window.print();
+}
+
+async function exportGuestToExcel() {
+  try {
+    if (!window.ExcelJS) {
+      alert('ExcelJS library not loaded. Please check your internet connection and try again.');
+      return;
+    }
+
+    const dateInput = document.getElementById('guestDateSelect');
+    const subjectSelect = document.getElementById('guestSubjectSelect');
+    
+    if (!dateInput.value || !subjectSelect.value) {
+      alert('Please select both date and subject first.');
+      return;
+    }
+
+    const selectedDate = dateInput.value;
+    const selectedSubject = subjectSelect.value;
+    const subjectText = subjectSelect.options[subjectSelect.selectedIndex].textContent;
+
+    const filtered = applyGuestFilters();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Attendance');
+
+    // Add title
+    ws.mergeCells('A1:F1');
+    ws.getCell('A1').value = 'GNDU Attendance System - Guest View';
+    ws.getCell('A1').font = { size: 16, bold: true };
+    ws.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Add session info
+    ws.mergeCells('A2:F2');
+    ws.getCell('A2').value = `Date: ${selectedDate} | Subject: ${subjectText}`;
+    ws.getCell('A2').font = { size: 11, color: { argb: 'FF555555' } };
+    ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Headers
+    const headers = ['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'];
+    ws.getRow(4).values = headers;
+
+    // Get current attendance data from the table
+    const tableBody = document.getElementById('guestStudentTable');
+    if (tableBody) {
+      const rows = tableBody.querySelectorAll('tr');
+      rows.forEach((row, index) => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length >= 6) {
+          const rowIndex = index + 5;
+          ws.getRow(rowIndex).values = [
+            cells[0].textContent.trim(),
+            cells[1].textContent.trim(),
+            cells[2].textContent.trim(),
+            cells[3].textContent.trim(),
+            cells[4].textContent.trim(),
+            cells[5].textContent.trim()
+          ];
+        }
+      });
+    }
+
+    // Style headers
+    ws.getRow(4).font = { bold: true };
+    ws.getRow(4).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE3F2FD' }
+    };
+
+    // Auto-fit columns
+    ws.columns.forEach(column => {
+      column.width = 15;
+    });
+
+    // Generate and download
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `GNDU_Attendance_${selectedDate}_${selectedSubject}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+  } catch (error) {
+    console.error('Error exporting to Excel:', error);
+    alert('Export failed. Please try again.');
+  }
+}
+
+// Make guest functions globally available
+window.handleGuestLogin = handleGuestLogin;
+window.loadSelectedSession = loadSelectedSession;
+window.loadGuestAttendance = loadGuestAttendance;
+window.logout = handleLogout;
+window.openGuestStudentDetails = openGuestStudentDetails;
+window.closeGuestStudentDetails = closeGuestStudentDetails;
 
 // ---------------- Student Details (Consolidated) ----------------
 function getQueryParam(name) {
@@ -2451,37 +3251,24 @@ function renderTable() {
       const statusSpan = document.createElement('span');
       statusSpan.className = 'status-absent';
       statusSpan.textContent = 'Absent';
-      
-      const presentBtn = document.createElement('button');
-      presentBtn.textContent = 'Mark Present';
-      presentBtn.className = 'manual-present-btn';
-      presentBtn.style.cssText = `
-        background-color: #28a745;
-        color: white;
-        border: none;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-        transition: background-color 0.2s;
-      `;
-      presentBtn.title = 'Manually mark this student as present';
-      
-      presentBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        markStudentPresentManually(student.id, student.name);
-      });
-      
-      presentBtn.addEventListener('mouseenter', function() {
-        this.style.backgroundColor = '#218838';
-      });
-      
-      presentBtn.addEventListener('mouseleave', function() {
-        this.style.backgroundColor = '#28a745';
-      });
-      
       statusContainer.appendChild(statusSpan);
-      statusContainer.appendChild(presentBtn);
+      
+      // Only show manual present button for authenticated teachers (not guests)
+      const isGuestMode = localStorage.getItem('guestMode') === 'true';
+      if (!isGuestMode) {
+        const presentBtn = document.createElement('button');
+        presentBtn.textContent = 'Mark Present';
+        presentBtn.className = 'manual-present-btn';
+        presentBtn.title = 'Manually mark this student as present';
+        
+        presentBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          markStudentPresentManually(student.id, student.name);
+        });
+        
+        statusContainer.appendChild(presentBtn);
+      }
+      
       td5.appendChild(statusContainer);
     }
     const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
