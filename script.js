@@ -924,8 +924,17 @@ async function loadGuestAttendance() {
   const selectedDate = dateInput.value;
   const selectedSubject = subjectSelect.value;
   
+  console.log('=== GUEST ATTENDANCE LOAD START ===');
+  console.log('User selected:', {
+    date: selectedDate,
+    subject: selectedSubject,
+    subjectSelectElement: subjectSelect,
+    availableOptions: Array.from(subjectSelect.options).map(opt => ({value: opt.value, text: opt.text}))
+  });
+  
   // Hide content if either date or subject is not selected
   if (!selectedDate || !selectedSubject) {
+    console.log('Missing date or subject, hiding content');
     document.getElementById('guestStatsSection').style.display = 'none';
     document.getElementById('guestTableContainer').style.display = 'none';
     document.getElementById('guestScrollHint').style.display = 'none';
@@ -952,6 +961,8 @@ async function loadGuestAttendance() {
     // Get the subject name from the subjectNames object
     const subjectName = subjectNames[selectedSubject] || selectedSubject;
 
+    console.log(`Searching for session: date=${firebaseDate}, selectedSubject=${selectedSubject}, subjectName=${subjectName}`);
+
     // Try multiple query strategies to find the session
     let sessionsSnapshot = null;
     
@@ -962,6 +973,10 @@ async function loadGuestAttendance() {
       .where('subjectCode', '==', selectedSubject)
       .get();
 
+    if (!sessionsSnapshot.empty) {
+      console.log(`Strategy 1 found ${sessionsSnapshot.size} sessions`);
+    }
+
     // Strategy 2: If not found, try with subjectName
     if (sessionsSnapshot.empty) {
       console.log(`Trying query 2: date=${firebaseDate}, subjectName=${subjectName}`);
@@ -969,6 +984,10 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subjectName', '==', subjectName)
         .get();
+        
+      if (!sessionsSnapshot.empty) {
+        console.log(`Strategy 2 found ${sessionsSnapshot.size} sessions`);
+      }
     }
 
     // Strategy 3: If still not found, try with subject field
@@ -978,6 +997,10 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subject', '==', selectedSubject)
         .get();
+        
+      if (!sessionsSnapshot.empty) {
+        console.log(`Strategy 3 found ${sessionsSnapshot.size} sessions`);
+      }
     }
 
     // Strategy 4: If still not found, try with subject field as subjectName
@@ -987,6 +1010,10 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subject', '==', subjectName)
         .get();
+        
+      if (!sessionsSnapshot.empty) {
+        console.log(`Strategy 4 found ${sessionsSnapshot.size} sessions`);
+      }
     }
 
     // Strategy 5: If still not found, get all sessions for that date and filter manually
@@ -1005,6 +1032,7 @@ async function loadGuestAttendance() {
           const docSubjectName = data.subjectName || '';
           const docSubject = data.subject || '';
           
+          // Check if this session matches the selected subject
           if (docSubjectCode === selectedSubject || 
               docSubjectName === subjectName || 
               docSubject === selectedSubject || 
@@ -1012,6 +1040,9 @@ async function loadGuestAttendance() {
               docSubjectCode.toLowerCase() === selectedSubject.toLowerCase() ||
               docSubjectName.toLowerCase() === subjectName.toLowerCase()) {
             matchingSessions.push(doc);
+            console.log(`Found matching session: ${docSubjectCode || docSubjectName || docSubject} matches ${selectedSubject}`);
+          } else {
+            console.log(`Session ${docSubjectCode || docSubjectName || docSubject} does not match ${selectedSubject}`);
           }
         });
         
@@ -1021,22 +1052,81 @@ async function loadGuestAttendance() {
             empty: false,
             docs: matchingSessions
           };
+          console.log(`Found ${matchingSessions.length} matching sessions for subject ${selectedSubject}`);
+        } else {
+          console.log(`No sessions found for subject ${selectedSubject} on date ${firebaseDate}`);
         }
       }
     }
 
     if (sessionsSnapshot.empty) {
-      showGuestStatus(`No attendance session found for ${firebaseDate} - ${selectedSubject}`, 'error');
+      console.log('No sessions found at all for date:', firebaseDate);
+      showGuestStatus(`No attendance session found for ${selectedSubject} on ${firebaseDate}`, 'error');
       hideGuestContent();
       return;
     }
+
+    console.log(`Found ${sessionsSnapshot.docs.length} total sessions for date ${firebaseDate}`);
+    
+    // Log all found sessions for debugging
+    sessionsSnapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`Session ${index + 1}:`, {
+        id: doc.id,
+        subjectCode: data.subjectCode,
+        subjectName: data.subjectName,
+        subject: data.subject,
+        timeSlot: data.timeSlot,
+        teacherName: data.teacherName,
+        date: data.date
+      });
+    });
 
     // Get the first matching session (should typically be only one per date/subject)
     const sessionDoc = sessionsSnapshot.docs[0];
     const sessionData = sessionDoc.data();
     const sessionId = sessionDoc.id;
     
-    console.log('Found session:', sessionData);
+    console.log('Selected session for verification:', {
+      id: sessionId,
+      data: sessionData
+    });
+    
+    // Verify this session actually matches our selected subject
+    const sessionSubjectCode = sessionData.subjectCode || '';
+    const sessionSubjectName = sessionData.subjectName || '';
+    const sessionSubject = sessionData.subject || '';
+    
+    console.log('VERIFICATION - Checking session match:', {
+      selectedSubject: selectedSubject,
+      selectedSubjectName: subjectName,
+      sessionSubjectCode: sessionSubjectCode,
+      sessionSubjectName: sessionSubjectName,
+      sessionSubject: sessionSubject,
+      fullSessionData: sessionData
+    });
+    
+    // More strict validation - exact matches only, no case-insensitive fallbacks
+    const isCorrectSubject = sessionSubjectCode === selectedSubject || 
+                            sessionSubject === selectedSubject;
+    
+    console.log('VERIFICATION - Match result:', isCorrectSubject);
+    
+    if (!isCorrectSubject) {
+      console.warn('VERIFICATION FAILED - Session does not match selected subject', {
+        selected: selectedSubject,
+        found: {
+          subjectCode: sessionSubjectCode,
+          subjectName: sessionSubjectName,
+          subject: sessionSubject
+        }
+      });
+      showGuestStatus(`No attendance session found for ${selectedSubject} on ${firebaseDate}`, 'error');
+      hideGuestContent();
+      return;
+    }
+    
+    console.log('VERIFICATION SUCCESS - Session matches selected subject');
     
     // Load attendance data for this session
     const attendanceSnapshot = await db.collection('attendanceSessions')
@@ -1066,8 +1156,8 @@ async function loadGuestAttendance() {
       });
     }
 
-    // Show success message with session details
-    const displaySubjectName = sessionData.subjectName || subjectName;
+    // Show success message with session details - use the selected subject for consistency
+    const displaySubjectName = subjectNames[selectedSubject] || selectedSubject;
     const timeSlot = sessionData.timeSlot || 'Unknown Time';
     const teacherName = sessionData.teacherName || 'Unknown Teacher';
     
@@ -1103,6 +1193,39 @@ function hideGuestContent() {
   document.getElementById('guestTableContainer').style.display = 'none';
   document.getElementById('guestScrollHint').style.display = 'none';
 }
+
+// Debug function to check what subjects and dates are available
+async function debugGuestAttendanceData() {
+  console.log('=== DEBUG: Checking all attendance sessions ===');
+  try {
+    const allSessions = await db.collection('attendanceSessions').get();
+    const sessionsByDate = {};
+    
+    allSessions.forEach(doc => {
+      const data = doc.data();
+      const date = data.date;
+      if (!sessionsByDate[date]) {
+        sessionsByDate[date] = [];
+      }
+      sessionsByDate[date].push({
+        id: doc.id,
+        subjectCode: data.subjectCode,
+        subjectName: data.subjectName,
+        subject: data.subject,
+        timeSlot: data.timeSlot,
+        teacherName: data.teacherName
+      });
+    });
+    
+    console.log('All sessions by date:', sessionsByDate);
+    return sessionsByDate;
+  } catch (error) {
+    console.error('Error debugging attendance data:', error);
+  }
+}
+
+// Add to window for console debugging
+window.debugGuestAttendanceData = debugGuestAttendanceData;
 
 async function loadSelectedSession() {
   // This function is replaced by loadGuestAttendance
