@@ -1312,6 +1312,471 @@ window.logout = handleLogout;
 window.openGuestStudentDetails = openGuestStudentDetails;
 window.closeGuestStudentDetails = closeGuestStudentDetails;
 
+// Make tab and resource functions globally available
+window.showTab = showTab;
+window.showGuestTab = showGuestTab;
+window.showResourceTab = showResourceTab;
+window.showGuestResourceTab = showGuestResourceTab;
+window.loadSubjectResources = loadSubjectResources;
+window.loadGuestSubjectResources = loadGuestSubjectResources;
+window.addResource = addResource;
+window.deleteResource = deleteResource;
+
+// ---------------- Tab Management Functions ----------------
+function showTab(tabName) {
+  // Hide all tab content
+  const attendanceSection = document.getElementById('attendanceSection');
+  const setupSection = document.getElementById('setupSection');
+  const resourcesSection = document.getElementById('resourcesSection');
+  
+  // Update tab buttons
+  const tabButtons = document.querySelectorAll('#teacherDashboard .tab-btn');
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  
+  if (tabName === 'attendance') {
+    // Hide resources section
+    if (resourcesSection) resourcesSection.style.display = 'none';
+    
+    // Check if there's an active session
+    if (sessionId && currentSession) {
+      // Session is active - show attendance section, hide setup
+      if (attendanceSection) attendanceSection.style.display = 'block';
+      if (setupSection) setupSection.style.display = 'none';
+    } else {
+      // No active session - show setup section, hide attendance
+      if (attendanceSection) attendanceSection.style.display = 'none';
+      if (setupSection) setupSection.style.display = 'block';
+    }
+    
+    // Activate attendance tab
+    const attendanceTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'attendance\')"]');
+    if (attendanceTab) attendanceTab.classList.add('active');
+  } else if (tabName === 'resources') {
+    // Hide attendance sections and show resources
+    if (attendanceSection) attendanceSection.style.display = 'none';
+    if (setupSection) setupSection.style.display = 'none';
+    if (resourcesSection) resourcesSection.style.display = 'block';
+    
+    // Activate resources tab
+    const resourcesTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'resources\')"]');
+    if (resourcesTab) resourcesTab.classList.add('active');
+  }
+}
+
+function showGuestTab(tabName) {
+  // Hide all guest tab content
+  const attendanceTab = document.getElementById('guestAttendanceTab');
+  const resourcesTab = document.getElementById('guestResourcesTab');
+  
+  // Update tab buttons
+  const tabButtons = document.querySelectorAll('#studentGuestDashboard .tab-btn');
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  
+  if (tabName === 'attendance') {
+    if (attendanceTab) attendanceTab.style.display = 'block';
+    if (resourcesTab) resourcesTab.style.display = 'none';
+    
+    // Activate attendance tab
+    const attendanceTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'attendance\')"]');
+    if (attendanceTabBtn) attendanceTabBtn.classList.add('active');
+  } else if (tabName === 'resources') {
+    if (attendanceTab) attendanceTab.style.display = 'none';
+    if (resourcesTab) resourcesTab.style.display = 'block';
+    
+    // Activate resources tab
+    const resourcesTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'resources\')"]');
+    if (resourcesTabBtn) resourcesTabBtn.classList.add('active');
+  }
+}
+
+// ---------------- Resource Management Functions ----------------
+let currentResourceSubject = null;
+let currentResourceType = 'notes';
+
+function showResourceTab(resourceType) {
+  currentResourceType = resourceType;
+  
+  // Hide all resource tab content
+  const notesTab = document.getElementById('notesTab');
+  const pyqsTab = document.getElementById('pyqsTab');
+  const videosTab = document.getElementById('videosTab');
+  
+  // Update tab buttons
+  const tabButtons = document.querySelectorAll('.resource-tab-btn');
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  
+  if (resourceType === 'notes') {
+    if (notesTab) notesTab.style.display = 'block';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'none';
+  } else if (resourceType === 'pyqs') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'block';
+    if (videosTab) videosTab.style.display = 'none';
+  } else if (resourceType === 'videos') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'block';
+  }
+  
+  // Activate the clicked tab
+  const activeTab = document.querySelector(`#resourcesSection .resource-tab-btn[onclick="showResourceTab('${resourceType}')"]`);
+  if (activeTab) activeTab.classList.add('active');
+  
+  // Reload resources for current subject and type
+  if (currentResourceSubject) {
+    loadResourcesForType(currentResourceSubject, resourceType);
+  }
+}
+
+function showGuestResourceTab(resourceType) {
+  // Hide all guest resource tab content
+  const notesTab = document.getElementById('guestNotesTab');
+  const pyqsTab = document.getElementById('guestPyqsTab');
+  const videosTab = document.getElementById('guestVideosTab');
+  
+  // Update tab buttons
+  const tabButtons = document.querySelectorAll('#guestResourcesTab .resource-tab-btn');
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  
+  if (resourceType === 'notes') {
+    if (notesTab) notesTab.style.display = 'block';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'none';
+  } else if (resourceType === 'pyqs') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'block';
+    if (videosTab) videosTab.style.display = 'none';
+  } else if (resourceType === 'videos') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'block';
+  }
+  
+  // Activate the clicked tab
+  const activeTab = document.querySelector(`#guestResourcesTab .resource-tab-btn[onclick="showGuestResourceTab('${resourceType}')"]`);
+  if (activeTab) activeTab.classList.add('active');
+  
+  // Reload guest resources for current subject and type
+  const guestSubjectSelect = document.getElementById('guestResourceSubjectSelect');
+  if (guestSubjectSelect && guestSubjectSelect.value) {
+    loadGuestResourcesForType(guestSubjectSelect.value, resourceType);
+  }
+}
+
+async function loadSubjectResources() {
+  const subjectSelect = document.getElementById('resourceSubjectSelect');
+  const resourcesContent = document.getElementById('resourcesContent');
+  
+  if (!subjectSelect.value) {
+    resourcesContent.style.display = 'none';
+    currentResourceSubject = null;
+    return;
+  }
+  
+  currentResourceSubject = subjectSelect.value;
+  resourcesContent.style.display = 'block';
+  
+  // Load resources for current type
+  await loadResourcesForType(currentResourceSubject, currentResourceType);
+}
+
+async function loadGuestSubjectResources() {
+  const subjectSelect = document.getElementById('guestResourceSubjectSelect');
+  const resourcesContent = document.getElementById('guestResourcesContent');
+  
+  if (!subjectSelect.value) {
+    resourcesContent.style.display = 'none';
+    return;
+  }
+  
+  resourcesContent.style.display = 'block';
+  
+  // Load guest resources for all types
+  await loadGuestResourcesForType(subjectSelect.value, 'notes');
+  await loadGuestResourcesForType(subjectSelect.value, 'pyqs');
+  await loadGuestResourcesForType(subjectSelect.value, 'videos');
+}
+
+async function loadResourcesForType(subjectCode, resourceType) {
+  try {
+    if (!db || !firebaseInitialized) {
+      console.log('Database not available');
+      return;
+    }
+    
+    const snapshot = await db.collection('subjectResources')
+      .doc(subjectCode)
+      .collection(resourceType)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    const resources = [];
+    snapshot.forEach(doc => {
+      resources.push({ id: doc.id, ...doc.data() });
+    });
+    
+    renderResourcesList(resources, resourceType);
+  } catch (error) {
+    console.error('Error loading resources:', error);
+    renderResourcesList([], resourceType);
+  }
+}
+
+async function loadGuestResourcesForType(subjectCode, resourceType) {
+  try {
+    if (!db || !firebaseInitialized) {
+      console.log('Database not available');
+      return;
+    }
+    
+    const snapshot = await db.collection('subjectResources')
+      .doc(subjectCode)
+      .collection(resourceType)
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    const resources = [];
+    snapshot.forEach(doc => {
+      resources.push({ id: doc.id, ...doc.data() });
+    });
+    
+    renderGuestResourcesList(resources, resourceType);
+  } catch (error) {
+    console.error('Error loading guest resources:', error);
+    renderGuestResourcesList([], resourceType);
+  }
+}
+
+function renderResourcesList(resources, resourceType) {
+  const listId = resourceType + 'List';
+  const listElement = document.getElementById(listId);
+  if (!listElement) return;
+  
+  if (resources.length === 0) {
+    listElement.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">${getResourceIcon(resourceType)}</div>
+        <h3>No ${getResourceTypeName(resourceType)} Added Yet</h3>
+        <p>Add your first ${getResourceTypeName(resourceType).toLowerCase()} using the form above.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  listElement.innerHTML = resources.map(resource => `
+    <div class="resource-item">
+      <div class="resource-header">
+        <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+      </div>
+      ${resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
+      <div class="resource-meta">
+        ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
+        ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
+        <span>Added: ${formatDate(resource.createdAt)}</span>
+      </div>
+      <div class="resource-actions">
+        <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+          🔗 Open ${getResourceTypeName(resourceType)}
+        </a>
+        <button onclick="deleteResource('${resource.id}', '${currentResourceSubject}', '${resourceType}')" class="resource-btn delete">
+          🗑️ Delete
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderGuestResourcesList(resources, resourceType) {
+  const listId = 'guest' + resourceType.charAt(0).toUpperCase() + resourceType.slice(1) + 'List';
+  const listElement = document.getElementById(listId);
+  if (!listElement) return;
+  
+  if (resources.length === 0) {
+    listElement.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">${getResourceIcon(resourceType)}</div>
+        <h3>No ${getResourceTypeName(resourceType)} Available</h3>
+        <p>Check back later for ${getResourceTypeName(resourceType).toLowerCase()}.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  listElement.innerHTML = resources.map(resource => `
+    <div class="resource-item">
+      <div class="resource-header">
+        <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+      </div>
+      ${resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
+      <div class="resource-meta">
+        ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
+        ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
+        <span>Added: ${formatDate(resource.createdAt)}</span>
+      </div>
+      <div class="resource-actions">
+        <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+          🔗 Open ${getResourceTypeName(resourceType)}
+        </a>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addResource(resourceType) {
+  try {
+    if (!currentResourceSubject) {
+      alert('Please select a subject first');
+      return;
+    }
+    
+    let title, url, description, year, type;
+    
+    if (resourceType === 'notes') {
+      title = document.getElementById('noteTitle').value.trim();
+      description = document.getElementById('noteDescription').value.trim();
+      url = document.getElementById('noteUrl').value.trim();
+    } else if (resourceType === 'pyqs') {
+      title = document.getElementById('pyqTitle').value.trim();
+      year = document.getElementById('pyqYear').value.trim();
+      type = document.getElementById('pyqType').value;
+      url = document.getElementById('pyqUrl').value.trim();
+    } else if (resourceType === 'videos') {
+      title = document.getElementById('videoTitle').value.trim();
+      description = document.getElementById('videoDescription').value.trim();
+      url = document.getElementById('videoUrl').value.trim();
+    }
+    
+    if (!title || !url) {
+      alert('Please fill in the title and URL fields');
+      return;
+    }
+    
+    if (!isValidUrl(url)) {
+      alert('Please enter a valid URL');
+      return;
+    }
+    
+    const resourceData = {
+      title,
+      url,
+      subjectCode: currentResourceSubject,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    if (description) resourceData.description = description;
+    if (year) resourceData.year = year;
+    if (type) resourceData.type = type;
+    
+    await db.collection('subjectResources')
+      .doc(currentResourceSubject)
+      .collection(resourceType)
+      .add(resourceData);
+    
+    // Clear form fields
+    if (resourceType === 'notes') {
+      document.getElementById('noteTitle').value = '';
+      document.getElementById('noteDescription').value = '';
+      document.getElementById('noteUrl').value = '';
+    } else if (resourceType === 'pyqs') {
+      document.getElementById('pyqTitle').value = '';
+      document.getElementById('pyqYear').value = '';
+      document.getElementById('pyqType').value = '';
+      document.getElementById('pyqUrl').value = '';
+    } else if (resourceType === 'videos') {
+      document.getElementById('videoTitle').value = '';
+      document.getElementById('videoDescription').value = '';
+      document.getElementById('videoUrl').value = '';
+    }
+    
+    // Reload resources
+    await loadResourcesForType(currentResourceSubject, resourceType);
+    
+    showNotification(`${getResourceTypeName(resourceType)} added successfully!`, 'success');
+  } catch (error) {
+    console.error('Error adding resource:', error);
+    alert('Failed to add resource. Please try again.');
+  }
+}
+
+async function deleteResource(resourceId, subjectCode, resourceType) {
+  if (!confirm(`Are you sure you want to delete this ${getResourceTypeName(resourceType).toLowerCase()}?`)) {
+    return;
+  }
+  
+  try {
+    await db.collection('subjectResources')
+      .doc(subjectCode)
+      .collection(resourceType)
+      .doc(resourceId)
+      .delete();
+    
+    // Reload resources
+    await loadResourcesForType(subjectCode, resourceType);
+    
+    showNotification(`${getResourceTypeName(resourceType)} deleted successfully!`, 'success');
+  } catch (error) {
+    console.error('Error deleting resource:', error);
+    alert('Failed to delete resource. Please try again.');
+  }
+}
+
+// Utility functions
+function getResourceIcon(resourceType) {
+  switch (resourceType) {
+    case 'notes': return '📝';
+    case 'pyqs': return '📋';
+    case 'videos': return '🎥';
+    default: return '📄';
+  }
+}
+
+function getResourceTypeName(resourceType) {
+  switch (resourceType) {
+    case 'notes': return 'Notes';
+    case 'pyqs': return 'Previous Year Questions';
+    case 'videos': return 'Videos';
+    default: return 'Resource';
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatDate(timestamp) {
+  if (!timestamp) return 'Unknown';
+  
+  let date;
+  if (timestamp.toDate) {
+    // Firestore timestamp
+    date = timestamp.toDate();
+  } else if (timestamp instanceof Date) {
+    date = timestamp;
+  } else {
+    date = new Date(timestamp);
+  }
+  
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function isValidUrl(string) {
+  try {
+    new URL(string);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // ---------------- Student Details (Consolidated) ----------------
 function getQueryParam(name) {
   const url = new URL(window.location.href);

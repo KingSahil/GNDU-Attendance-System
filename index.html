@@ -54,6 +54,10 @@
     <div class="header">
       <h1>GNDU Attendance System</h1>
       <p>Department of Computer Engineering & Technology</p>
+      <div class="dashboard-tabs">
+        <button class="tab-btn active" onclick="showTab('attendance')">📋 Attendance</button>
+        <button class="tab-btn" onclick="showTab('resources')">📚 Subject Resources</button>
+      </div>
     </div>
 
     <div class="setup-section" id="setupSection">
@@ -177,6 +181,93 @@
       </div>
       <div class="scroll-hint">💡 Scroll to view all columns • Click column headers to sort • Use "Mark Present" button for manual attendance</div>
     </div>
+
+    <!-- Subject Resources Management Section -->
+    <div class="resources-section" id="resourcesSection" style="display: none;">
+      <div class="resources-header">
+        <h2>📚 Subject Resources Management</h2>
+        <p>Add and manage notes, previous year questions, and video resources for each subject</p>
+      </div>
+
+      <div class="resources-controls">
+        <div class="form-group">
+          <label for="resourceSubjectSelect">Select Subject</label>
+          <select id="resourceSubjectSelect" onchange="loadSubjectResources()">
+            <option value="">Select Subject</option>
+            <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
+            <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
+            <option value="MTL1001">MTL1001 - Mathematics I</option>
+            <option value="PHL1083">PHL1083 - Physics</option>
+            <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
+            <option value="PBL1022">PBL1022 - Basic Punjabi</option>
+            <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="resources-content" id="resourcesContent" style="display: none;">
+        <div class="resource-tabs">
+          <button class="resource-tab-btn active" onclick="showResourceTab('notes')">📝 Notes</button>
+          <button class="resource-tab-btn" onclick="showResourceTab('pyqs')">📋 PYQs</button>
+          <button class="resource-tab-btn" onclick="showResourceTab('videos')">🎥 Videos</button>
+        </div>
+
+        <!-- Notes Section -->
+        <div class="resource-tab-content" id="notesTab">
+          <div class="add-resource-form">
+            <h3>📝 Add New Note</h3>
+            <div class="form-row">
+              <input type="text" id="noteTitle" placeholder="Note title">
+              <input type="text" id="noteDescription" placeholder="Description (optional)">
+            </div>
+            <div class="form-row">
+              <input type="url" id="noteUrl" placeholder="Note URL (Google Drive, OneDrive, etc.)">
+              <button onclick="addResource('notes')" class="add-btn">Add Note</button>
+            </div>
+          </div>
+          <div class="resources-list" id="notesList"></div>
+        </div>
+
+        <!-- PYQs Section -->
+        <div class="resource-tab-content" id="pyqsTab" style="display: none;">
+          <div class="add-resource-form">
+            <h3>📋 Add Previous Year Question Paper</h3>
+            <div class="form-row">
+              <input type="text" id="pyqTitle" placeholder="PYQ title (e.g., 2023 Mid-Sem)">
+              <input type="text" id="pyqYear" placeholder="Year">
+            </div>
+            <div class="form-row">
+              <select id="pyqType">
+                <option value="">Select Type</option>
+                <option value="mid-sem">Mid Semester</option>
+                <option value="end-sem">End Semester</option>
+                <option value="sessional">Sessional Test</option>
+                <option value="quiz">Quiz</option>
+              </select>
+              <input type="url" id="pyqUrl" placeholder="PYQ URL">
+              <button onclick="addResource('pyqs')" class="add-btn">Add PYQ</button>
+            </div>
+          </div>
+          <div class="resources-list" id="pyqsList"></div>
+        </div>
+
+        <!-- Videos Section -->
+        <div class="resource-tab-content" id="videosTab" style="display: none;">
+          <div class="add-resource-form">
+            <h3>🎥 Add Video Resource</h3>
+            <div class="form-row">
+              <input type="text" id="videoTitle" placeholder="Video title">
+              <input type="text" id="videoDescription" placeholder="Description">
+            </div>
+            <div class="form-row">
+              <input type="url" id="videoUrl" placeholder="Video URL (YouTube, Drive, etc.)">
+              <button onclick="addResource('videos')" class="add-btn">Add Video</button>
+            </div>
+          </div>
+          <div class="resources-list" id="videosList"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Student Guest Dashboard -->
@@ -188,83 +279,138 @@
         <span class="user-badge">👤 Student View (Guest)</span>
         <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
-    </div>
-
-    <div class="guest-info-banner">
-      <h3>📚 Previous Attendance Sessions</h3>
-      <p>View attendance records from previous sessions. You cannot create new sessions or mark attendance manually.</p>
-    </div>
-
-    <div class="controls">
-      <div class="search-box">
-        <input autocomplete="off" type="text" id="guestSearch" placeholder="Search students by name or father's name...">
-      </div>
-      <div class="share-buttons">
-        <button class="share-btn" id="guestPrintBtn" title="Print current view">
-          🖨️ Print
-        </button>
-        <button class="share-btn" id="guestExportBtn" title="Export current view to Excel (.xlsx)">
-          📥 Export to Excel
-        </button>
+      <div class="dashboard-tabs">
+        <button class="tab-btn active" onclick="showGuestTab('attendance')">📋 Attendance</button>
+        <button class="tab-btn" onclick="showGuestTab('resources')">📚 Resources</button>
       </div>
     </div>
 
-    <div class="session-selector">
-      <div class="form-group">
-        <label for="guestDateSelect">Select Date:</label>
-        <input type="date" id="guestDateSelect" onchange="loadGuestAttendance()">
+    <!-- Guest Attendance Tab -->
+    <div class="guest-tab-content" id="guestAttendanceTab">
+      <div class="guest-info-banner">
+        <h3>📚 Previous Attendance Sessions</h3>
+        <p>View attendance records from previous sessions. You cannot create new sessions or mark attendance manually.</p>
       </div>
-      <div class="form-group">
-        <label for="guestSubjectSelect">Select Subject:</label>
-        <select id="guestSubjectSelect" onchange="loadGuestAttendance()">
-          <option value="">Choose a subject...</option>
-          <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
-          <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
-          <option value="MTL1001">MTL1001 - Mathematics I</option>
-          <option value="PHL1083">PHL1083 - Physics</option>
-          <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
-          <option value="PBL1022">PBL1022 - Basic Punjabi</option>
-          <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
-        </select>
+
+      <div class="controls">
+        <div class="search-box">
+          <input autocomplete="off" type="text" id="guestSearch" placeholder="Search students by name or father's name...">
+        </div>
+        <div class="share-buttons">
+          <button class="share-btn" id="guestPrintBtn" title="Print current view">
+            🖨️ Print
+          </button>
+          <button class="share-btn" id="guestExportBtn" title="Export current view to Excel (.xlsx)">
+            📥 Export to Excel
+          </button>
+        </div>
       </div>
-      <div id="guestSessionStatus" class="session-status" style="display: none;"></div>
+
+      <div class="session-selector">
+        <div class="form-group">
+          <label for="guestDateSelect">Select Date:</label>
+          <input type="date" id="guestDateSelect" onchange="loadGuestAttendance()">
+        </div>
+        <div class="form-group">
+          <label for="guestSubjectSelect">Select Subject:</label>
+          <select id="guestSubjectSelect" onchange="loadGuestAttendance()">
+            <option value="">Choose a subject...</option>
+            <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
+            <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
+            <option value="MTL1001">MTL1001 - Mathematics I</option>
+            <option value="PHL1083">PHL1083 - Physics</option>
+            <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
+            <option value="PBL1022">PBL1022 - Basic Punjabi</option>
+            <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
+          </select>
+        </div>
+        <div id="guestSessionStatus" class="session-status" style="display: none;"></div>
+      </div>
+
+      <div class="stats" id="guestStatsSection" style="display: none;">
+        <div class="stat-card">
+          <div class="stat-number" id="guestTotalStudents">0</div>
+          <div class="stat-label">Total Students</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="guestPresentCount">0</div>
+          <div class="stat-label">Present</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="guestAbsentCount">0</div>
+          <div class="stat-label">Absent</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="guestAttendancePercent">0%</div>
+          <div class="stat-label">Attendance</div>
+        </div>
+      </div>
+
+      <div class="table-container" id="guestTableContainer" style="display: none;">
+        <table>
+          <thead>
+            <tr>
+              <th id="guestHeaderRoll" class="sortable-header">Roll Number</th>
+              <th id="guestHeaderId" class="sortable-header">Student ID</th>
+              <th id="guestHeaderName" class="sortable-header">Name</th>
+              <th id="guestHeaderFather" class="sortable-header">Father's Name</th>
+              <th id="guestHeaderStatus" class="sortable-header">Status</th>
+              <th id="guestHeaderTime" class="sortable-header">Check-in Time</th>
+            </tr>
+          </thead>
+          <tbody id="guestStudentTable"></tbody>
+        </table>
+      </div>
+      <div class="scroll-hint" id="guestScrollHint" style="display: none;">💡 Scroll to view all columns • Click column headers to sort</div>
     </div>
 
-    <div class="stats" id="guestStatsSection" style="display: none;">
-      <div class="stat-card">
-        <div class="stat-number" id="guestTotalStudents">0</div>
-        <div class="stat-label">Total Students</div>
+    <!-- Guest Resources Tab -->
+    <div class="guest-tab-content" id="guestResourcesTab" style="display: none;">
+      <div class="guest-info-banner">
+        <h3>📚 Subject Resources</h3>
+        <p>Access notes, previous year questions, and video resources for each subject.</p>
       </div>
-      <div class="stat-card">
-        <div class="stat-number" id="guestPresentCount">0</div>
-        <div class="stat-label">Present</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number" id="guestAbsentCount">0</div>
-        <div class="stat-label">Absent</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-number" id="guestAttendancePercent">0%</div>
-        <div class="stat-label">Attendance</div>
-      </div>
-    </div>
 
-    <div class="table-container" id="guestTableContainer" style="display: none;">
-      <table>
-        <thead>
-          <tr>
-            <th id="guestHeaderRoll" class="sortable-header">Roll Number</th>
-            <th id="guestHeaderId" class="sortable-header">Student ID</th>
-            <th id="guestHeaderName" class="sortable-header">Name</th>
-            <th id="guestHeaderFather" class="sortable-header">Father's Name</th>
-            <th id="guestHeaderStatus" class="sortable-header">Status</th>
-            <th id="guestHeaderTime" class="sortable-header">Check-in Time</th>
-          </tr>
-        </thead>
-        <tbody id="guestStudentTable"></tbody>
-      </table>
+      <div class="resources-controls">
+        <div class="form-group">
+          <label for="guestResourceSubjectSelect">Select Subject</label>
+          <select id="guestResourceSubjectSelect" onchange="loadGuestSubjectResources()">
+            <option value="">Select Subject</option>
+            <option value="CEL1020">CEL1020 - Engineering Mechanics</option>
+            <option value="MEL1021">MEL1021 - Engineering Graphics & Drafting</option>
+            <option value="MTL1001">MTL1001 - Mathematics I</option>
+            <option value="PHL1083">PHL1083 - Physics</option>
+            <option value="PBL1021">PBL1021 - Punjabi (Compulsory)</option>
+            <option value="PBL1022">PBL1022 - Basic Punjabi</option>
+            <option value="HSL4000">HSL4000 - Punjab History & Culture</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="guest-resources-content" id="guestResourcesContent" style="display: none;">
+        <div class="resource-tabs">
+          <button class="resource-tab-btn active" onclick="showGuestResourceTab('notes')">📝 Notes</button>
+          <button class="resource-tab-btn" onclick="showGuestResourceTab('pyqs')">📋 Previous Year Questions</button>
+          <button class="resource-tab-btn" onclick="showGuestResourceTab('videos')">🎥 Videos</button>
+        </div>
+
+        <!-- Guest Notes Section -->
+        <div class="resource-tab-content" id="guestNotesTab">
+          <div class="resources-list" id="guestNotesList"></div>
+        </div>
+
+        <!-- Guest PYQs Section -->
+        <div class="resource-tab-content" id="guestPyqsTab" style="display: none;">
+          <div class="resources-list" id="guestPyqsList"></div>
+        </div>
+
+        <!-- Guest Videos Section -->
+        <div class="resource-tab-content" id="guestVideosTab" style="display: none;">
+          <div class="resources-list" id="guestVideosList"></div>
+        </div>
+      </div>
     </div>
-    <div class="scroll-hint" id="guestScrollHint" style="display: none;">💡 Scroll to view all columns • Click column headers to sort</div>
+  </div>
 
   <!-- Student Check-in Interface -->
   <div class="checkin-container" id="studentCheckin" style="display: none;">
