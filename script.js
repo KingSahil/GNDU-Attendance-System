@@ -2024,6 +2024,42 @@ function openDocument(fileName) {
   window.open(fileName, '_blank');
 }
 
+function viewPDF(fileName) {
+  // Open PDF in new window/tab with minimal UI to prevent IDM interference
+  const pdfWindow = window.open('', '_blank');
+  
+  if (pdfWindow) {
+    pdfWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>PDF Viewer</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            background: #2c2c2c;
+            overflow: hidden;
+          }
+          .pdf-frame {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+          }
+        </style>
+      </head>
+      <body>
+        <iframe class="pdf-frame" src="${fileName}#toolbar=1&navpanes=1&scrollbar=1" type="application/pdf"></iframe>
+      </body>
+      </html>
+    `);
+    pdfWindow.document.close();
+  } else {
+    // Fallback if popup is blocked
+    window.open(fileName, '_blank');
+  }
+}
+
 function editDocument(documentType) {
   // Function to handle document editing for admin
   const documentNames = {
