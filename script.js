@@ -1451,14 +1451,16 @@ function showTab(tabName) {
   const attendanceSection = document.getElementById('attendanceSection');
   const setupSection = document.getElementById('setupSection');
   const resourcesSection = document.getElementById('resourcesSection');
+  const miscellaneousSection = document.getElementById('miscellaneousSection');
   
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#teacherDashboard .tab-btn');
   tabButtons.forEach(btn => btn.classList.remove('active'));
   
   if (tabName === 'attendance') {
-    // Hide resources section
+    // Hide all other sections
     if (resourcesSection) resourcesSection.style.display = 'none';
+    if (miscellaneousSection) miscellaneousSection.style.display = 'none';
     
     // Check if there's an active session
     if (sessionId && currentSession) {
@@ -1475,14 +1477,25 @@ function showTab(tabName) {
     const attendanceTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'attendance\')"]');
     if (attendanceTab) attendanceTab.classList.add('active');
   } else if (tabName === 'resources') {
-    // Hide attendance sections and show resources
+    // Hide all other sections and show resources
     if (attendanceSection) attendanceSection.style.display = 'none';
     if (setupSection) setupSection.style.display = 'none';
+    if (miscellaneousSection) miscellaneousSection.style.display = 'none';
     if (resourcesSection) resourcesSection.style.display = 'block';
     
     // Activate resources tab
     const resourcesTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'resources\')"]');
     if (resourcesTab) resourcesTab.classList.add('active');
+  } else if (tabName === 'miscellaneous') {
+    // Hide all other sections and show miscellaneous
+    if (attendanceSection) attendanceSection.style.display = 'none';
+    if (setupSection) setupSection.style.display = 'none';
+    if (resourcesSection) resourcesSection.style.display = 'none';
+    if (miscellaneousSection) miscellaneousSection.style.display = 'block';
+    
+    // Activate miscellaneous tab
+    const miscTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'miscellaneous\')"]');
+    if (miscTab) miscTab.classList.add('active');
   }
 }
 
@@ -1490,6 +1503,7 @@ function showGuestTab(tabName) {
   // Hide all guest tab content
   const attendanceTab = document.getElementById('guestAttendanceTab');
   const resourcesTab = document.getElementById('guestResourcesTab');
+  const miscellaneousTab = document.getElementById('guestMiscellaneousTab');
   
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#studentGuestDashboard .tab-btn');
@@ -1498,6 +1512,7 @@ function showGuestTab(tabName) {
   if (tabName === 'attendance') {
     if (attendanceTab) attendanceTab.style.display = 'block';
     if (resourcesTab) resourcesTab.style.display = 'none';
+    if (miscellaneousTab) miscellaneousTab.style.display = 'none';
     
     // Activate attendance tab
     const attendanceTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'attendance\')"]');
@@ -1505,10 +1520,19 @@ function showGuestTab(tabName) {
   } else if (tabName === 'resources') {
     if (attendanceTab) attendanceTab.style.display = 'none';
     if (resourcesTab) resourcesTab.style.display = 'block';
+    if (miscellaneousTab) miscellaneousTab.style.display = 'none';
     
     // Activate resources tab
     const resourcesTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'resources\')"]');
     if (resourcesTabBtn) resourcesTabBtn.classList.add('active');
+  } else if (tabName === 'miscellaneous') {
+    if (attendanceTab) attendanceTab.style.display = 'none';
+    if (resourcesTab) resourcesTab.style.display = 'none';
+    if (miscellaneousTab) miscellaneousTab.style.display = 'block';
+    
+    // Activate miscellaneous tab
+    const miscTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'miscellaneous\')"]');
+    if (miscTabBtn) miscTabBtn.classList.add('active');
   }
 }
 
@@ -1523,6 +1547,7 @@ function showResourceTab(resourceType) {
   const notesTab = document.getElementById('notesTab');
   const pyqsTab = document.getElementById('pyqsTab');
   const videosTab = document.getElementById('videosTab');
+  const booksTab = document.getElementById('booksTab');
   
   // Update tab buttons
   const tabButtons = document.querySelectorAll('.resource-tab-btn');
@@ -1532,14 +1557,22 @@ function showResourceTab(resourceType) {
     if (notesTab) notesTab.style.display = 'block';
     if (pyqsTab) pyqsTab.style.display = 'none';
     if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'none';
   } else if (resourceType === 'pyqs') {
     if (notesTab) notesTab.style.display = 'none';
     if (pyqsTab) pyqsTab.style.display = 'block';
     if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'none';
   } else if (resourceType === 'videos') {
     if (notesTab) notesTab.style.display = 'none';
     if (pyqsTab) pyqsTab.style.display = 'none';
     if (videosTab) videosTab.style.display = 'block';
+    if (booksTab) booksTab.style.display = 'none';
+  } else if (resourceType === 'books') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'block';
   }
   
   // Activate the clicked tab
@@ -1557,6 +1590,7 @@ function showGuestResourceTab(resourceType) {
   const notesTab = document.getElementById('guestNotesTab');
   const pyqsTab = document.getElementById('guestPyqsTab');
   const videosTab = document.getElementById('guestVideosTab');
+  const booksTab = document.getElementById('guestBooksTab');
   
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#guestResourcesTab .resource-tab-btn');
@@ -1566,14 +1600,22 @@ function showGuestResourceTab(resourceType) {
     if (notesTab) notesTab.style.display = 'block';
     if (pyqsTab) pyqsTab.style.display = 'none';
     if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'none';
   } else if (resourceType === 'pyqs') {
     if (notesTab) notesTab.style.display = 'none';
     if (pyqsTab) pyqsTab.style.display = 'block';
     if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'none';
   } else if (resourceType === 'videos') {
     if (notesTab) notesTab.style.display = 'none';
     if (pyqsTab) pyqsTab.style.display = 'none';
     if (videosTab) videosTab.style.display = 'block';
+    if (booksTab) booksTab.style.display = 'none';
+  } else if (resourceType === 'books') {
+    if (notesTab) notesTab.style.display = 'none';
+    if (pyqsTab) pyqsTab.style.display = 'none';
+    if (videosTab) videosTab.style.display = 'none';
+    if (booksTab) booksTab.style.display = 'block';
   }
   
   // Activate the clicked tab
@@ -1687,27 +1729,50 @@ function renderResourcesList(resources, resourceType) {
     return;
   }
   
-  listElement.innerHTML = resources.map(resource => `
-    <div class="resource-item">
-      <div class="resource-header">
-        <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+  if (resourceType === 'books') {
+    // Special rendering for books
+    listElement.innerHTML = resources.map(resource => `
+      <div class="resource-item book-item">
+        <div class="resource-header">
+          <h4 class="resource-title book-title">${escapeHtml(resource.title)}</h4>
+          <div class="book-author">by ${escapeHtml(resource.author)}</div>
+        </div>
+        
+        <div class="resource-actions">
+          <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+            📖 Open Book
+          </a>
+          <button onclick="deleteResource('${resource.id}', '${currentResourceSubject}', '${resourceType}')" class="resource-btn delete">
+            🗑️ Delete
+          </button>
+        </div>
       </div>
-      ${resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
-      <div class="resource-meta">
-        ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
-        ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
-        <span>Added: ${formatDate(resource.createdAt)}</span>
+    `).join('');
+  } else {
+    // Regular rendering for notes, pyqs, videos
+    listElement.innerHTML = resources.map(resource => `
+      <div class="resource-item">
+        <div class="resource-header">
+          <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+        </div>
+        ${resourceType === 'notes' && resource.author ? `<div class="resource-author">by ${escapeHtml(resource.author)}</div>` : ''}
+        ${resourceType !== 'notes' && resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
+        <div class="resource-meta">
+          ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
+          ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
+          <span>Added: ${formatDate(resource.createdAt)}</span>
+        </div>
+        <div class="resource-actions">
+          <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+            🔗 Open ${getResourceTypeName(resourceType)}
+          </a>
+          <button onclick="deleteResource('${resource.id}', '${currentResourceSubject}', '${resourceType}')" class="resource-btn delete">
+            🗑️ Delete
+          </button>
+        </div>
       </div>
-      <div class="resource-actions">
-        <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
-          🔗 Open ${getResourceTypeName(resourceType)}
-        </a>
-        <button onclick="deleteResource('${resource.id}', '${currentResourceSubject}', '${resourceType}')" class="resource-btn delete">
-          🗑️ Delete
-        </button>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+  }
 }
 
 function renderGuestResourcesList(resources, resourceType) {
@@ -1726,24 +1791,44 @@ function renderGuestResourcesList(resources, resourceType) {
     return;
   }
   
-  listElement.innerHTML = resources.map(resource => `
-    <div class="resource-item">
-      <div class="resource-header">
-        <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+  if (resourceType === 'books') {
+    // Special rendering for guest books
+    listElement.innerHTML = resources.map(resource => `
+      <div class="resource-item book-item">
+        <div class="resource-header">
+          <h4 class="resource-title book-title">${escapeHtml(resource.title)}</h4>
+          <div class="book-author">by ${escapeHtml(resource.author)}</div>
+        </div>
+        
+        <div class="resource-actions">
+          <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+            📖 Open Book
+          </a>
+        </div>
       </div>
-      ${resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
-      <div class="resource-meta">
-        ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
-        ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
-        <span>Added: ${formatDate(resource.createdAt)}</span>
+    `).join('');
+  } else {
+    // Regular rendering for notes, pyqs, videos
+    listElement.innerHTML = resources.map(resource => `
+      <div class="resource-item">
+        <div class="resource-header">
+          <h4 class="resource-title">${escapeHtml(resource.title)}</h4>
+        </div>
+        ${resourceType === 'notes' && resource.author ? `<div class="resource-author">by ${escapeHtml(resource.author)}</div>` : ''}
+        ${resourceType !== 'notes' && resource.description ? `<div class="resource-description">${escapeHtml(resource.description)}</div>` : ''}
+        <div class="resource-meta">
+          ${resource.year ? `<span>Year: ${escapeHtml(resource.year)}</span>` : ''}
+          ${resource.type ? `<span>Type: ${escapeHtml(resource.type)}</span>` : ''}
+          <span>Added: ${formatDate(resource.createdAt)}</span>
+        </div>
+        <div class="resource-actions">
+          <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
+            🔗 Open ${getResourceTypeName(resourceType)}
+          </a>
+        </div>
       </div>
-      <div class="resource-actions">
-        <a href="${escapeHtml(resource.url)}" target="_blank" class="resource-btn">
-          🔗 Open ${getResourceTypeName(resourceType)}
-        </a>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+  }
 }
 
 async function addResource(resourceType) {
@@ -1753,11 +1838,11 @@ async function addResource(resourceType) {
       return;
     }
     
-    let title, url, description, year, type;
+    let title, url, description, year, type, author;
     
     if (resourceType === 'notes') {
       title = document.getElementById('noteTitle').value.trim();
-      description = document.getElementById('noteDescription').value.trim();
+      author = document.getElementById('noteAuthor').value.trim();
       url = document.getElementById('noteUrl').value.trim();
     } else if (resourceType === 'pyqs') {
       title = document.getElementById('pyqTitle').value.trim();
@@ -1768,29 +1853,55 @@ async function addResource(resourceType) {
       title = document.getElementById('videoTitle').value.trim();
       description = document.getElementById('videoDescription').value.trim();
       url = document.getElementById('videoUrl').value.trim();
+    } else if (resourceType === 'books') {
+      title = document.getElementById('bookTitle').value.trim();
+      author = document.getElementById('bookAuthor').value.trim();
+      url = document.getElementById('bookUrl').value.trim();
     }
     
-    if (!title || !url) {
-      alert('Please fill in the title and URL fields');
-      return;
-    }
-    
-    if (!isValidUrl(url)) {
-      alert('Please enter a valid URL');
-      return;
+    // Validation
+    if (resourceType === 'books') {
+      if (!title || !author || !url) {
+        alert('Please fill in all required fields (Title, Author, and URL)');
+        return;
+      }
+      
+      if (!isValidUrl(url)) {
+        alert('Please enter a valid URL');
+        return;
+      }
+    } else {
+      if (!title || !url) {
+        alert('Please fill in the title and URL fields');
+        return;
+      }
+      
+      if (!isValidUrl(url)) {
+        alert('Please enter a valid URL');
+        return;
+      }
     }
     
     const resourceData = {
       title,
-      url,
       subjectCode: currentResourceSubject,
       createdAt: new Date(),
       updatedAt: new Date()
     };
     
-    if (description) resourceData.description = description;
-    if (year) resourceData.year = year;
-    if (type) resourceData.type = type;
+    // Add type-specific fields
+    if (resourceType === 'books') {
+      resourceData.author = author;
+      resourceData.url = url;
+    } else if (resourceType === 'notes') {
+      resourceData.url = url;
+      if (author) resourceData.author = author;
+    } else {
+      resourceData.url = url;
+      if (description) resourceData.description = description;
+      if (year) resourceData.year = year;
+      if (type) resourceData.type = type;
+    }
     
     await db.collection('subjectResources')
       .doc(currentResourceSubject)
@@ -1800,7 +1911,7 @@ async function addResource(resourceType) {
     // Clear form fields
     if (resourceType === 'notes') {
       document.getElementById('noteTitle').value = '';
-      document.getElementById('noteDescription').value = '';
+      document.getElementById('noteAuthor').value = '';
       document.getElementById('noteUrl').value = '';
     } else if (resourceType === 'pyqs') {
       document.getElementById('pyqTitle').value = '';
@@ -1811,6 +1922,10 @@ async function addResource(resourceType) {
       document.getElementById('videoTitle').value = '';
       document.getElementById('videoDescription').value = '';
       document.getElementById('videoUrl').value = '';
+    } else if (resourceType === 'books') {
+      document.getElementById('bookTitle').value = '';
+      document.getElementById('bookAuthor').value = '';
+      document.getElementById('bookUrl').value = '';
     }
     
     // Reload resources
@@ -1851,6 +1966,7 @@ function getResourceIcon(resourceType) {
     case 'notes': return '📝';
     case 'pyqs': return '📋';
     case 'videos': return '🎥';
+    case 'books': return '📖';
     default: return '📄';
   }
 }
@@ -1860,6 +1976,7 @@ function getResourceTypeName(resourceType) {
     case 'notes': return 'Notes';
     case 'pyqs': return 'Previous Year Questions';
     case 'videos': return 'Videos';
+    case 'books': return 'Books';
     default: return 'Resource';
   }
 }
@@ -1898,6 +2015,66 @@ function isValidUrl(string) {
   } catch (_) {
     return false;
   }
+}
+
+// ---------------- Miscellaneous Functions ----------------
+
+function openDocument(fileName) {
+  // Open document in new window/tab
+  window.open(fileName, '_blank');
+}
+
+function editDocument(documentType) {
+  // Function to handle document editing for admin
+  const documentNames = {
+    'timetable': 'Time Table',
+    'syllabus': 'Syllabus',
+    'calendar': 'Academic Calendar'
+  };
+  
+  const documentName = documentNames[documentType] || 'Document';
+  
+  // Show confirmation dialog
+  const confirmed = confirm(`Do you want to edit the ${documentName}?\n\nThis will allow you to upload a new ${documentName.toLowerCase()} file.`);
+  
+  if (confirmed) {
+    // Create file input dynamically
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.style.display = 'none';
+    
+    // Set accepted file types based on document type
+    if (documentType === 'timetable') {
+      fileInput.accept = '.png,.jpg,.jpeg,.gif,.bmp,.svg';
+    } else {
+      fileInput.accept = '.pdf';
+    }
+    
+    fileInput.onchange = function(event) {
+      const file = event.target.files[0];
+      if (file) {
+        handleDocumentUpload(file, documentType);
+      }
+    };
+    
+    // Trigger file selection
+    document.body.appendChild(fileInput);
+    fileInput.click();
+    document.body.removeChild(fileInput);
+  }
+}
+
+function handleDocumentUpload(file, documentType) {
+  // This function would handle the actual file upload
+  // For now, we'll show a placeholder message
+  showNotification(`${file.name} selected for ${documentType}. Upload functionality would be implemented here.`, 'info');
+  
+  // In a real implementation, you would:
+  // 1. Upload the file to your server or cloud storage
+  // 2. Update the document references in the HTML
+  // 3. Refresh the page or update the document display
+  
+  console.log(`File selected: ${file.name} for ${documentType}`);
 }
 
 // ---------------- Student Details (Consolidated) ----------------
