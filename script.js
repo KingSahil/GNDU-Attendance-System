@@ -2025,84 +2025,20 @@ function openDocument(fileName) {
 }
 
 function viewPDF(fileName) {
-  // Detect mobile devices
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  
-  if (isMobile || isAndroid) {
-    // For mobile devices, especially Android Chrome, use direct link opening
-    // This allows the browser to handle PDF viewing with its built-in PDF viewer
-    try {
-      // Create a temporary link element and click it
-      const link = document.createElement('a');
-      link.href = fileName;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      // Fallback to window.open
-      window.open(fileName, '_blank');
-    }
-  } else {
-    // For desktop, use the custom PDF viewer with minimal UI
-    const pdfWindow = window.open('', '_blank');
-    
-    if (pdfWindow) {
-      pdfWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>PDF Viewer</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body {
-              margin: 0;
-              padding: 0;
-              background: #2c2c2c;
-              overflow: hidden;
-              font-family: Arial, sans-serif;
-            }
-            .pdf-frame {
-              width: 100vw;
-              height: 100vh;
-              border: none;
-            }
-            .error-message {
-              color: white;
-              text-align: center;
-              padding: 20px;
-              display: none;
-            }
-            .fallback-link {
-              color: #4CAF50;
-              text-decoration: none;
-              font-size: 18px;
-            }
-          </style>
-        </head>
-        <body>
-          <iframe class="pdf-frame" src="${fileName}#toolbar=1&navpanes=1&scrollbar=1" type="application/pdf" 
-                  onerror="showError()"></iframe>
-          <div class="error-message" id="errorMsg">
-            <p>Unable to display PDF in browser.</p>
-            <a href="${fileName}" class="fallback-link" target="_blank">Click here to download/view PDF</a>
-          </div>
-          <script>
-            function showError() {
-              document.querySelector('.pdf-frame').style.display = 'none';
-              document.getElementById('errorMsg').style.display = 'block';
-            }
-          </script>
-        </body>
-        </html>
-      `);
-      pdfWindow.document.close();
-    } else {
-      // Fallback if popup is blocked
-      window.open(fileName, '_blank');
-    }
+  // For all devices, use the browser's native PDF viewer
+  // This provides the best user experience with full zoom, search, and navigation controls
+  try {
+    // Create a temporary link element and click it
+    const link = document.createElement('a');
+    link.href = fileName;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    // Fallback to window.open if link method fails
+    window.open(fileName, '_blank');
   }
 }
 
