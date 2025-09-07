@@ -1,0 +1,15 @@
+{
+  "functions": {
+    "index.html": {
+      "memory": 128
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
+}
