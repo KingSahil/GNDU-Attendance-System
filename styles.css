@@ -1056,6 +1056,12 @@ tbody tr:nth-child(even) {
   border: 1px solid rgba(23, 162, 184, 0.2);
 }
 
+.location-status.info {
+  background: rgba(33, 150, 243, 0.1);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.2);
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

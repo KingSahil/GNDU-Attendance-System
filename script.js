@@ -8,6 +8,10 @@ const firebaseConfig = window.firebaseConfig || {
   measurementId: "G-7TNPBZ3ZZN"
 };
 
+// Google Maps API configuration for location services
+const GOOGLE_MAPS_API_KEY = "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8"; // Using same API key as Firebase
+let googleMapsLoaded = false;
+
 
 // Initialize Firebase
 let db;
@@ -15,6 +19,24 @@ let firebaseInitialized = false;
 let auth;
 let sessionId = null;
 let attendanceListener = null; // Initialize the attendance listener
+
+// Connection monitoring for high load detection
+let connectionQuality = 'good';
+let lastFirebaseOperation = Date.now();
+
+function updateConnectionQuality() {
+  const timeSinceLastOp = Date.now() - lastFirebaseOperation;
+  
+  if (timeSinceLastOp > 10000) { // 10 seconds since last operation
+    connectionQuality = 'poor';
+  } else if (timeSinceLastOp > 5000) { // 5 seconds
+    connectionQuality = 'slow';
+  } else {
+    connectionQuality = 'good';
+  }
+  
+  return connectionQuality;
+}
 // Global state used across attendance features
 let attendance = {};
 let attendanceTime = {};
@@ -275,9 +297,210 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 200;  // 100 meters radius
+const ALLOWED_RADIUS_METERS = 200;  // 200 meters radius
 const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
+
+// Cache for Firebase session requests to reduce load
+const sessionCache = new Map();
+const CACHE_DURATION = 30000; // 30 seconds
+
+// Debounce Firebase requests to prevent spam
+const firebaseRequestDebounce = new Map();
+
+// Load Google Maps API for enhanced location services
+function loadGoogleMapsAPI() {
+  return new Promise((resolve, reject) => {
+    if (googleMapsLoaded || (window.google && window.google.maps)) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
+    script.async = true;
+    script.onload = () => {
+      googleMapsLoaded = true;
+      console.log('Google Maps API loaded successfully');
+      resolve();
+    };
+    script.onerror = (error) => {
+      console.error('Failed to load Google Maps API:', error);
+      reject(error);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// Google-enhanced location verification with better error handling
+async function checkUserLocationWithGoogle(retryCount = 0) {
+  const maxRetries = 3;
+  
+  try {
+    // First, try to load Google Maps API
+    await loadGoogleMapsAPI();
+    
+    showLocationStatus('Getting your location with Google services...', 'checking', true);
+    
+    return new Promise((resolve) => {
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 5000
+      };
+
+      const handleSuccess = async (position) => {
+        try {
+          const { latitude, longitude, accuracy } = position.coords;
+          
+          console.log(`Raw location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
+          
+          // Validate coordinates
+          if (latitude === 0 && longitude === 0) {
+            throw new Error('Invalid coordinates (0,0)');
+          }
+          
+          let distance;
+          let method = 'fallback';
+          
+          // Try to use Google Maps if available and API is working
+          if (window.google && window.google.maps && window.google.maps.geometry) {
+            try {
+              const userLocation = new google.maps.LatLng(latitude, longitude);
+              const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
+              distance = google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
+              method = 'google';
+              console.log(`Google Maps distance calculation: ${distance}m`);
+            } catch (googleError) {
+              console.warn('Google Maps calculation failed, using fallback:', googleError);
+              // Fall back to Haversine formula
+              distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
+              method = 'fallback';
+              console.log(`Fallback distance calculation: ${distance}m`);
+            }
+          } else {
+            // Use standard calculation if Google Maps not available
+            distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
+            console.log(`Standard distance calculation: ${distance}m`);
+          }
+          
+          const distanceRounded = Math.round(distance);
+          
+          if (distance <= ALLOWED_RADIUS_METERS) {
+            const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${method} method)`;
+            showLocationStatus(successMsg, 'allowed');
+            resolve({ success: true, distance: distanceRounded, method: method });
+          } else {
+            let statusMsg;
+            if (distance > 50000) {
+              statusMsg = `❌ You're ${Math.round(distance/1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+            } else if (distance > 1000) {
+              statusMsg = `❌ You're ${(distance/1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+            } else {
+              statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+            }
+            
+            showLocationStatus(statusMsg, 'denied');
+            resolve({ success: false, distance: distanceRounded, method: method });
+          }
+          
+        } catch (error) {
+          console.error('Error processing location:', error);
+          if (retryCount < maxRetries) {
+            showLocationStatus(`Location processing error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            setTimeout(() => {
+              checkUserLocationWithGoogle(retryCount + 1).then(resolve);
+            }, 1500);
+          } else {
+            // Fallback to standard geolocation
+            console.log('Falling back to standard geolocation API');
+            checkUserLocationFallback().then(resolve);
+          }
+        }
+      };
+
+      const handleError = (error) => {
+        console.error('Geolocation error:', error);
+        
+        if (retryCount < maxRetries) {
+          showLocationStatus(`Location error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+          setTimeout(() => {
+            checkUserLocationWithGoogle(retryCount + 1).then(resolve);
+          }, 1500);
+        } else {
+          // Fallback to standard geolocation
+          console.log('Location failed, falling back to standard geolocation');
+          checkUserLocationFallback().then(resolve);
+        }
+      };
+
+      // Use the geolocation API
+      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+    });
+    
+  } catch (error) {
+    console.error('Failed to initialize Google location services, using fallback:', error);
+    return checkUserLocationFallback();
+  }
+}
+
+// Cached session retrieval to reduce Firebase load
+async function getCachedSession(sessionId) {
+  const cacheKey = `session_${sessionId}`;
+  const cached = sessionCache.get(cacheKey);
+  
+  // Return cached session if still valid
+  if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+    console.log('Using cached session data');
+    return cached.data;
+  }
+  
+  // Check if there's already a pending request for this session
+  if (firebaseRequestDebounce.has(cacheKey)) {
+    console.log('Waiting for existing session request');
+    return firebaseRequestDebounce.get(cacheKey);
+  }
+  
+  // Create new request and cache the promise
+  const requestPromise = (async () => {
+    try {
+      console.log('Fetching fresh session data from Firebase');
+      const doc = await db.collection('attendanceSessions').doc(sessionId).get();
+      
+      if (doc.exists) {
+        const sessionData = doc.data();
+        
+        // Convert Firestore Timestamp to proper format
+        if (sessionData.expiryTime && typeof sessionData.expiryTime.toDate === 'function') {
+          sessionData.expiryTime = sessionData.expiryTime.toDate().toISOString();
+        } else if (sessionData.expiryTime && typeof sessionData.expiryTime.seconds === 'number') {
+          sessionData.expiryTime = new Date(sessionData.expiryTime.seconds * 1000).toISOString();
+        }
+        
+        // Cache the result
+        sessionCache.set(cacheKey, {
+          data: sessionData,
+          timestamp: Date.now()
+        });
+        
+        // Update localStorage cache as well
+        localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
+        
+        return sessionData;
+      } else {
+        throw new Error('Session not found');
+      }
+    } finally {
+      // Remove from debounce map
+      firebaseRequestDebounce.delete(cacheKey);
+    }
+  })();
+  
+  // Store the promise in debounce map
+  firebaseRequestDebounce.set(cacheKey, requestPromise);
+  
+  return requestPromise;
+}
 
 // Timetable data
 const timetable = {
@@ -2425,17 +2648,28 @@ function showLocationStatus(message, status, isLoading = false) {
   }
 }
 
+// Main location verification function - tries Google first, then fallback
 async function checkUserLocation(retryCount = 0) {
+  try {
+    console.log('Starting location verification with Google services...');
+    return await checkUserLocationWithGoogle(retryCount);
+  } catch (error) {
+    console.error('Google location verification failed, using fallback:', error);
+    return await checkUserLocationFallback(retryCount);
+  }
+}
+
+async function checkUserLocationFallback(retryCount = 0) {
   const maxRetries = 3;
   
   if (!navigator.geolocation) {
     showLocationStatus('Geolocation is not supported by your browser', 'denied');
-    return false;
+    return { success: false, error: 'Geolocation not supported' };
   }
   
   // For production, we recommend using HTTPS, but allow HTTP for local development
   if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    
+    console.warn('Location API may not work properly without HTTPS');
     // Continue with location check even without HTTPS
   }
   
@@ -2443,10 +2677,11 @@ async function checkUserLocation(retryCount = 0) {
   showLocationStatus('Getting your location...', 'checking', true);
   
   return new Promise((resolve) => {
+    // Optimized options for better concurrent performance
     const options = {
       enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0
+      timeout: 8000, // Reduced from 15000ms for faster response
+      maximumAge: 10000 // Allow 10-second cached position to reduce load
     };
     
     // Debug: Log that we're starting location check
@@ -2456,36 +2691,93 @@ async function checkUserLocation(retryCount = 0) {
       try {
         const { latitude, longitude, accuracy } = position.coords;
         
-        
-        // Calculate distance in meters
-        const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
-        const distanceRounded = Math.round(distance);
-        (`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
-        
-        if (isNaN(distance) || !isFinite(distance)) {
-          throw new Error('Invalid distance calculation');
+        // Validate GPS accuracy - reject if too inaccurate
+        if (accuracy > 100) {
+          console.warn(`GPS accuracy too low: ${accuracy}m`);
+          if (retryCount < maxRetries) {
+            showLocationStatus(`GPS accuracy low (${Math.round(accuracy)}m). Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            setTimeout(() => {
+              checkUserLocationFallback(retryCount + 1).then(resolve);
+            }, 1000);
+            return;
+          } else {
+            showLocationStatus(`❌ GPS accuracy too low (${Math.round(accuracy)}m). Please try again in a better location.`, 'denied');
+            resolve({ success: false, distance: 0, error: 'Low GPS accuracy' });
+            return;
+          }
         }
         
+        console.log(`Location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
+        console.log(`GNDU coordinates: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
+        
+        // Calculate distance in meters with validation
+        const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
+        const distanceRounded = Math.round(distance);
+        
+        console.log(`Raw distance calculation: ${distance}`);
+        console.log(`Distance rounded: ${distanceRounded}m`);
+        
+        // Check if we're getting default/mock coordinates
+        if (latitude === 0 && longitude === 0) {
+          console.warn('Device is returning 0,0 coordinates - likely a simulator or permission issue');
+          showLocationStatus('❌ Unable to get accurate location. Please ensure location services are enabled and try again.', 'denied');
+          resolve({ success: false, distance: 0, error: 'Invalid coordinates (0,0)' });
+          return;
+        }
+        
+        // Check if coordinates are suspiciously close to GNDU when they shouldn't be
+        if (distance < 50 && accuracy > 1000) {
+          console.warn('Suspiciously accurate distance with poor GPS accuracy - possible mock location');
+          showLocationStatus('❌ Location accuracy is questionable. Please ensure you are using real GPS and try again.', 'denied');
+          resolve({ success: false, distance: distanceRounded, error: 'Questionable location accuracy' });
+          return;
+        }
+        
+        // Validate distance calculation
+        if (isNaN(distance) || !isFinite(distance) || distance < 0) {
+          console.error('Invalid distance calculation:', distance);
+          if (retryCount < maxRetries) {
+            showLocationStatus(`Location calculation error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            setTimeout(() => {
+              checkUserLocationFallback(retryCount + 1).then(resolve);
+            }, 1000);
+            return;
+          } else {
+            showLocationStatus('❌ Error calculating distance from campus', 'denied');
+            resolve({ success: false, distance: 0, error: 'Distance calculation failed' });
+            return;
+          }
+        }
+        
+        console.log(`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
+        
         if (distance <= ALLOWED_RADIUS_METERS) {
-          const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${distanceRounded}m from campus)`;
-          
+          const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
           showLocationStatus(successMsg, 'allowed');
           resolve({ success: true, distance: distanceRounded });
         } else {
-          const statusMsg = `❌ You're ${distanceRounded}m from GNDU (must be within ${ALLOWED_RADIUS_METERS}m)`;
+          // Show more helpful message based on distance
+          let statusMsg;
+          if (distance > 50000) { // More than 50km
+            statusMsg = `❌ You're ${Math.round(distance/1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+          } else if (distance > 1000) { // More than 1km
+            statusMsg = `❌ You're ${(distance/1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+          } else {
+            statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+          }
           
           showLocationStatus(statusMsg, 'denied');
           resolve({ success: false, distance: distanceRounded });
         }
       } catch (error) {
-        
+        console.error('Error processing location:', error);
         showLocationStatus('❌ Error processing your location', 'denied');
         resolve({ success: false, error: error.message });
       }
     };
     
     const handleError = (error) => {
-      
+      console.error('Geolocation error:', error);
       let message = '❌ Error: ';
       
       switch(error.code) {
@@ -2506,18 +2798,19 @@ async function checkUserLocation(retryCount = 0) {
         message += ` Retrying... (${retryCount + 1}/${maxRetries})`;
         showLocationStatus(message, 'checking');
         setTimeout(() => {
-          checkUserLocation(retryCount + 1).then(result => {
-          if (result && typeof result === 'object' && 'success' in result) {
-            resolve(result);
-          } else {
-            // Handle legacy boolean return value for backward compatibility
-            resolve({ success: result, distance: 0 });
-          }
-        });
-        }, 2000);
+          checkUserLocationFallback(retryCount + 1).then(result => {
+            if (result && typeof result === 'object' && 'success' in result) {
+              resolve(result);
+            } else {
+              // Handle legacy boolean return value for backward compatibility
+              resolve({ success: result, distance: 0 });
+            }
+          });
+        }, 1500); // Slightly longer delay between retries
         return;
       }
       
+      // Final error message after all retries
       switch(error.code) {
         case error.PERMISSION_DENIED:
           message = 'Location permission denied. Please enable it to continue.';
@@ -2533,7 +2826,7 @@ async function checkUserLocation(retryCount = 0) {
       }
       
       showLocationStatus(message, 'denied');
-      resolve(false);
+      resolve({ success: false, error: error.code || 'UNKNOWN_ERROR' });
     };
     
     // Check permissions first if supported
@@ -4550,31 +4843,20 @@ async function showStudentCheckin(sessionParam) {
     }
   }
   
-  // If we don't have a valid session, try to load from Firestore
+  // If we don't have a valid session, try to load from Firestore using cached approach
   if (firebaseInitialized) {
     try {
+      console.log('Loading session from Firebase with caching');
+      session = await getCachedSession(sessionParam);
       
-      const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
+      console.log('Session loaded:', session ? 'Success' : 'Failed');
       
-      if (doc.exists) {
-        session = doc.data();
-        
-        
-        // Convert Firestore Timestamp to proper format before expiry check
-        if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
-          session.expiryTime = session.expiryTime.toDate().toISOString();
-        } else if (session.expiryTime && typeof session.expiryTime.seconds === 'number') {
-          session.expiryTime = new Date(session.expiryTime.seconds * 1000).toISOString();
-        }
-        
+      if (session) {
         // Check if session is expired before displaying
         if (isSessionExpired(session)) {
           displayExpiredSessionMessage();
           return;
         }
-        
-        // Cache the session data
-        localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
         
         // Display the check-in form
         displayStudentCheckin(session);
@@ -4582,7 +4864,7 @@ async function showStudentCheckin(sessionParam) {
         showError('Session not found or has expired');
       }
     } catch (error) {
-      
+      console.error('Error loading session:', error);
       showError('Unable to load session. Please check your connection and try again.');
     }
   } else {
@@ -4776,45 +5058,59 @@ async function displayStudentCheckin(session) {
     messageDiv.innerHTML = '';
   }
   
-  // Start location check
-  try {
-    const locationResult = await checkUserLocation();
-    window.locationVerified = locationResult.success;
-    window.locationDistance = locationResult.distance || 0;
+  // Set initial button state - require user interaction for location
+  if (submitBtn) {
+    submitBtn.disabled = false; // Enable button for user interaction
+    submitBtn.textContent = 'Verify Location & Mark Present';
+    submitBtn.style.backgroundColor = '#2196F3'; // Blue color for initial state
     
-    // If Firebase is not initialized, bypass location verification
-    if (!firebaseInitialized) {
+    // Show initial status
+    showLocationStatus('📍 Click the button below to verify your location and mark attendance', 'info');
+    
+    submitBtn.onclick = async function(e) {
+      e.preventDefault();
       
-      window.locationVerified = true;
-      
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Mark Me Present';
-        showLocationStatus('✅ Location verification bypassed - Demo mode', 'success');
-      }
-    } else if (submitBtn) {
-      submitBtn.disabled = !window.locationVerified;
-      submitBtn.textContent = 'Mark Me Present';
-      
-      // Show status message based on location result
       if (!window.locationVerified) {
-        const distanceText = window.locationDistance >= 1000 
-          ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
-          : `${Math.round(window.locationDistance)} meters away`;
-        showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'error');
+        // First click - verify location
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Checking location...';
+        
+        try {
+          const locationResult = await checkUserLocation();
+          window.locationVerified = locationResult.success;
+          window.locationDistance = locationResult.distance || 0;
+          
+          if (window.locationVerified) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Mark Me Present';
+            submitBtn.onclick = function(e) {
+              e.preventDefault();
+              submitAttendance();
+            };
+            showLocationStatus(`✅ Location verified! Click again to mark attendance.`, 'allowed');
+          } else {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Location Verification Failed';
+            const distanceText = window.locationDistance >= 1000 
+              ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
+              : `${Math.round(window.locationDistance)} meters away`;
+            showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'denied');
+          }
+        } catch (error) {
+          console.error('Location check failed:', error);
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Location Error - Try Again';
+          submitBtn.onclick = async function(e) {
+            e.preventDefault();
+            // Retry location verification
+            location.reload();
+          };
+        }
       } else {
-        showLocationStatus(`✅ Location verified - You are inside the campus (${Math.round(window.locationDistance)}m from GNDU)`, 'success');
+        // Second click - submit attendance
+        submitAttendance();
       }
-    }
-  } catch (error) {
-    
-    if (messageDiv) {
-      setMessage(messageDiv, 'error', 'Error checking location. Please ensure location services are enabled and refresh the page.');
-    }
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Location Error';
-    }
+    };
   }
   
   // Focus on the first input field after location check
