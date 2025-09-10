@@ -297,7 +297,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 200;  // 200 meters radius
+const ALLOWED_RADIUS_METERS = 2000;  // 200 meters radius
 const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
@@ -5058,59 +5058,54 @@ async function displayStudentCheckin(session) {
     messageDiv.innerHTML = '';
   }
   
-  // Set initial button state - require user interaction for location
+  // Set initial button state and automatically verify location
   if (submitBtn) {
-    submitBtn.disabled = false; // Enable button for user interaction
-    submitBtn.textContent = 'Verify Location & Mark Present';
-    submitBtn.style.backgroundColor = '#2196F3'; // Blue color for initial state
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Checking location...';
     
     // Show initial status
-    showLocationStatus('📍 Click the button below to verify your location and mark attendance', 'info');
+    showLocationStatus('📍 Automatically verifying your location...', 'info');
     
-    submitBtn.onclick = async function(e) {
-      e.preventDefault();
-      
-      if (!window.locationVerified) {
-        // First click - verify location
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Checking location...';
+    // Automatically verify location when page loads
+    (async function() {
+      try {
+        const locationResult = await checkUserLocation();
+        window.locationVerified = locationResult.success;
+        window.locationDistance = locationResult.distance || 0;
         
-        try {
-          const locationResult = await checkUserLocation();
-          window.locationVerified = locationResult.success;
-          window.locationDistance = locationResult.distance || 0;
-          
-          if (window.locationVerified) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Mark Me Present';
-            submitBtn.onclick = function(e) {
-              e.preventDefault();
-              submitAttendance();
-            };
-            showLocationStatus(`✅ Location verified! Click again to mark attendance.`, 'allowed');
-          } else {
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Location Verification Failed';
-            const distanceText = window.locationDistance >= 1000 
-              ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
-              : `${Math.round(window.locationDistance)} meters away`;
-            showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'denied');
-          }
-        } catch (error) {
-          console.error('Location check failed:', error);
+        if (window.locationVerified) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Mark Me Present';
+          submitBtn.onclick = function(e) {
+            e.preventDefault();
+            submitAttendance();
+          };
+          showLocationStatus(`✅ Location verified! You can now mark attendance.`, 'allowed');
+        } else {
           submitBtn.disabled = true;
-          submitBtn.textContent = 'Location Error - Try Again';
+          submitBtn.textContent = 'Location Verification Failed';
+          const distanceText = window.locationDistance >= 1000 
+            ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
+            : `${Math.round(window.locationDistance)} meters away`;
+          showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'denied');
+          
+          // Add retry button functionality
           submitBtn.onclick = async function(e) {
             e.preventDefault();
-            // Retry location verification
             location.reload();
           };
         }
-      } else {
-        // Second click - submit attendance
-        submitAttendance();
+      } catch (error) {
+        console.error('Location check failed:', error);
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Location Error - Try Again';
+        showLocationStatus('❌ Location verification failed. Click to retry.', 'denied');
+        submitBtn.onclick = async function(e) {
+          e.preventDefault();
+          location.reload();
+        };
       }
-    };
+    })();
   }
   
   // Focus on the first input field after location check
