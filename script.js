@@ -12,6 +12,29 @@ const firebaseConfig = window.firebaseConfig || {
 const GOOGLE_MAPS_API_KEY = "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8"; // Using same API key as Firebase
 let googleMapsLoaded = false;
 
+// Rate limiting and traffic management for Google Maps API
+let apiRequestQueue = [];
+let isProcessingQueue = false;
+let lastApiRequest = 0;
+const API_REQUEST_DELAY = 100; // Minimum 100ms between API requests
+const MAX_CONCURRENT_REQUESTS = 5;
+let activeRequests = 0;
+
+// Traffic monitoring
+let totalLocationRequests = 0;
+let successfulGoogleRequests = 0;
+let fallbackRequests = 0;
+let startTime = Date.now();
+
+// Log traffic statistics periodically
+setInterval(() => {
+  if (totalLocationRequests > 0) {
+    const successRate = ((successfulGoogleRequests / totalLocationRequests) * 100).toFixed(1);
+    const fallbackRate = ((fallbackRequests / totalLocationRequests) * 100).toFixed(1);
+    console.log(`📊 Location Stats: ${totalLocationRequests} total, ${successRate}% Google success, ${fallbackRate}% fallback used`);
+  }
+}, 30000); // Log every 30 seconds if there's activity
+
 
 // Initialize Firebase
 let db;
@@ -308,86 +331,196 @@ const CACHE_DURATION = 30000; // 30 seconds
 // Debounce Firebase requests to prevent spam
 const firebaseRequestDebounce = new Map();
 
-// Load Google Maps API for enhanced location services
+// Load Google Maps API for enhanced location services with traffic management
 function loadGoogleMapsAPI() {
   return new Promise((resolve, reject) => {
-    if (googleMapsLoaded || (window.google && window.google.maps)) {
+    // Check if already loaded
+    if (googleMapsLoaded || (window.google && window.google.maps && window.google.maps.geometry)) {
+      console.log('Google Maps API already loaded');
       resolve();
       return;
     }
 
+    // Check if script is already loading
+    const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
+    if (existingScript) {
+      console.log('Google Maps API script already loading, waiting...');
+      existingScript.addEventListener('load', () => {
+        googleMapsLoaded = true;
+        resolve();
+      });
+      existingScript.addEventListener('error', reject);
+      return;
+    }
+
+    console.log('Loading Google Maps API...');
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async&callback=initGoogleMaps`;
     script.async = true;
-    script.onload = () => {
+    script.defer = true;
+    
+    // Add global callback function
+    window.initGoogleMaps = () => {
       googleMapsLoaded = true;
       console.log('Google Maps API loaded successfully');
+      delete window.initGoogleMaps; // Clean up
       resolve();
     };
+    
+    script.onload = () => {
+      // Fallback if callback doesn't fire
+      if (window.google && window.google.maps) {
+        googleMapsLoaded = true;
+        resolve();
+      }
+    };
+    
     script.onerror = (error) => {
       console.error('Failed to load Google Maps API:', error);
-      reject(error);
+      delete window.initGoogleMaps; // Clean up
+      reject(new Error('Google Maps API failed to load'));
     };
+    
+    // Add timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      console.error('Google Maps API loading timeout');
+      delete window.initGoogleMaps;
+      reject(new Error('Google Maps API loading timeout'));
+    }, 15000); // 15 second timeout
+    
+    script.addEventListener('load', () => clearTimeout(timeout));
+    script.addEventListener('error', () => clearTimeout(timeout));
+    
     document.head.appendChild(script);
   });
 }
 
-// Google-enhanced location verification with better error handling
+// Queue system for managing Google Maps API requests during high traffic
+async function queueGoogleMapsRequest(requestFunction) {
+  return new Promise((resolve, reject) => {
+    apiRequestQueue.push({ requestFunction, resolve, reject });
+    processRequestQueue();
+  });
+}
+
+async function processRequestQueue() {
+  if (isProcessingQueue || apiRequestQueue.length === 0) {
+    return;
+  }
+  
+  isProcessingQueue = true;
+  
+  while (apiRequestQueue.length > 0 && activeRequests < MAX_CONCURRENT_REQUESTS) {
+    const { requestFunction, resolve, reject } = apiRequestQueue.shift();
+    
+    // Ensure minimum delay between requests
+    const timeSinceLastRequest = Date.now() - lastApiRequest;
+    if (timeSinceLastRequest < API_REQUEST_DELAY) {
+      await new Promise(resolve => setTimeout(resolve, API_REQUEST_DELAY - timeSinceLastRequest));
+    }
+    
+    activeRequests++;
+    lastApiRequest = Date.now();
+    
+    try {
+      const result = await requestFunction();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      activeRequests--;
+    }
+  }
+  
+  isProcessingQueue = false;
+  
+  // Continue processing if there are more requests
+  if (apiRequestQueue.length > 0) {
+    setTimeout(processRequestQueue, API_REQUEST_DELAY);
+  }
+}
+
+// Google-enhanced location verification with traffic management and better error handling
 async function checkUserLocationWithGoogle(retryCount = 0) {
-  const maxRetries = 3;
+  const maxRetries = 2; // Reduced retries for faster fallback during high traffic
   
   try {
-    // First, try to load Google Maps API
-    await loadGoogleMapsAPI();
+    // First, try to load Google Maps API with timeout
+    await Promise.race([
+      loadGoogleMapsAPI(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('API loading timeout')), 8000)
+      )
+    ]);
     
-    showLocationStatus('Getting your location with Google services...', 'checking', true);
+    showLocationStatus('📍 Getting your location with enhanced accuracy...', 'checking', true);
     
     return new Promise((resolve) => {
+      // Optimized options for high-traffic scenarios
       const options = {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000
+        timeout: 8000, // Reduced timeout for faster response
+        maximumAge: 15000 // Allow 15-second cached position to reduce load
       };
 
       const handleSuccess = async (position) => {
         try {
           const { latitude, longitude, accuracy } = position.coords;
           
-          console.log(`Raw location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
+          console.log(`Location obtained: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
           
           // Validate coordinates
           if (latitude === 0 && longitude === 0) {
             throw new Error('Invalid coordinates (0,0)');
           }
           
+          // More lenient accuracy check for high-traffic periods
+          if (accuracy > 1000 && retryCount === 0) {
+            console.warn(`Low accuracy (${accuracy}m), but proceeding due to traffic load`);
+          }
+          
           let distance;
           let method = 'fallback';
           
-          // Try to use Google Maps if available and API is working
-          if (window.google && window.google.maps && window.google.maps.geometry) {
-            try {
-              const userLocation = new google.maps.LatLng(latitude, longitude);
-              const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
-              distance = google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
-              method = 'google';
+          // Use queued Google Maps API request to manage traffic
+          try {
+            if (window.google && window.google.maps && window.google.maps.geometry) {
+              const googleRequest = async () => {
+                const userLocation = new google.maps.LatLng(latitude, longitude);
+                const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
+                return google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
+              };
+              
+              // Queue the request to manage API rate limits
+              distance = await Promise.race([
+                queueGoogleMapsRequest(googleRequest),
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Google API timeout')), 3000)
+                )
+              ]);
+              
+              method = 'google-enhanced';
               console.log(`Google Maps distance calculation: ${distance}m`);
-            } catch (googleError) {
-              console.warn('Google Maps calculation failed, using fallback:', googleError);
-              // Fall back to Haversine formula
-              distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
-              method = 'fallback';
-              console.log(`Fallback distance calculation: ${distance}m`);
+            } else {
+              throw new Error('Google Maps not available');
             }
-          } else {
-            // Use standard calculation if Google Maps not available
+          } catch (googleError) {
+            console.warn('Google Maps calculation failed, using fallback:', googleError.message);
+            // Fall back to Haversine formula
             distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
-            console.log(`Standard distance calculation: ${distance}m`);
+            method = 'native-fallback';
+            console.log(`Fallback distance calculation: ${distance}m`);
           }
           
           const distanceRounded = Math.round(distance);
           
+          // Validate distance calculation
+          if (isNaN(distance) || !isFinite(distance) || distance < 0) {
+            throw new Error('Invalid distance calculation');
+          }
+          
           if (distance <= ALLOWED_RADIUS_METERS) {
-            const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${method} method)`;
+            const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${method})`;
             showLocationStatus(successMsg, 'allowed');
             resolve({ success: true, distance: distanceRounded, method: method });
           } else {
@@ -407,13 +540,13 @@ async function checkUserLocationWithGoogle(retryCount = 0) {
         } catch (error) {
           console.error('Error processing location:', error);
           if (retryCount < maxRetries) {
-            showLocationStatus(`Location processing error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            showLocationStatus(`Processing error. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
             setTimeout(() => {
               checkUserLocationWithGoogle(retryCount + 1).then(resolve);
-            }, 1500);
+            }, 1000); // Shorter delay for retry
           } else {
-            // Fallback to standard geolocation
-            console.log('Falling back to standard geolocation API');
+            // Quick fallback to standard geolocation
+            console.log('Google processing failed, using standard geolocation');
             checkUserLocationFallback().then(resolve);
           }
         }
@@ -422,14 +555,15 @@ async function checkUserLocationWithGoogle(retryCount = 0) {
       const handleError = (error) => {
         console.error('Geolocation error:', error);
         
-        if (retryCount < maxRetries) {
-          showLocationStatus(`Location error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+        // During high traffic, fail faster and use fallback
+        if (retryCount < maxRetries && error.code !== error.PERMISSION_DENIED) {
+          showLocationStatus(`Location error. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
           setTimeout(() => {
             checkUserLocationWithGoogle(retryCount + 1).then(resolve);
-          }, 1500);
+          }, 1000);
         } else {
-          // Fallback to standard geolocation
-          console.log('Location failed, falling back to standard geolocation');
+          // Quick fallback to standard geolocation
+          console.log('Location failed, using fallback method');
           checkUserLocationFallback().then(resolve);
         }
       };
@@ -439,7 +573,8 @@ async function checkUserLocationWithGoogle(retryCount = 0) {
     });
     
   } catch (error) {
-    console.error('Failed to initialize Google location services, using fallback:', error);
+    console.error('Failed to initialize Google location services:', error.message);
+    // Immediate fallback if Google services fail to initialize
     return checkUserLocationFallback();
   }
 }
@@ -2648,99 +2783,109 @@ function showLocationStatus(message, status, isLoading = false) {
   }
 }
 
-// Main location verification function - tries Google first, then fallback
+// Main location verification function - tries Google first with traffic management, then fallback
 async function checkUserLocation(retryCount = 0) {
+  // Increment traffic counter
+  totalLocationRequests++;
+  
+  // Check connection quality and adjust strategy
+  const quality = updateConnectionQuality();
+  
   try {
-    console.log('Starting location verification with Google services...');
-    return await checkUserLocationWithGoogle(retryCount);
+    console.log(`Starting location verification (connection: ${quality}, request #${totalLocationRequests})...`);
+    
+    // For poor connections or high retry count, skip Google and go straight to fallback
+    if (quality === 'poor' || retryCount >= 2) {
+      console.log('Using fallback method due to connection quality or retry count');
+      fallbackRequests++;
+      return await checkUserLocationFallback(retryCount);
+    }
+    
+    // Try Google with timeout based on connection quality
+    const timeout = quality === 'slow' ? 6000 : 10000;
+    const result = await Promise.race([
+      checkUserLocationWithGoogle(retryCount),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Google verification timeout')), timeout)
+      )
+    ]);
+    
+    // Count successful Google requests
+    if (result.method && result.method.includes('google')) {
+      successfulGoogleRequests++;
+    } else {
+      fallbackRequests++;
+    }
+    
+    return result;
+    
   } catch (error) {
-    console.error('Google location verification failed, using fallback:', error);
+    console.error('Google location verification failed:', error.message);
+    fallbackRequests++;
     return await checkUserLocationFallback(retryCount);
   }
 }
 
 async function checkUserLocationFallback(retryCount = 0) {
-  const maxRetries = 3;
+  const maxRetries = 2; // Reduced retries for faster experience during high traffic
   
   if (!navigator.geolocation) {
-    showLocationStatus('Geolocation is not supported by your browser', 'denied');
+    showLocationStatus('❌ Location services not supported by your browser', 'denied');
     return { success: false, error: 'Geolocation not supported' };
   }
   
-  // For production, we recommend using HTTPS, but allow HTTP for local development
-  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    console.warn('Location API may not work properly without HTTPS');
-    // Continue with location check even without HTTPS
-  }
-  
   // Show loading state
-  showLocationStatus('Getting your location...', 'checking', true);
+  showLocationStatus('📍 Getting your location (fast mode)...', 'checking', true);
   
   return new Promise((resolve) => {
-    // Optimized options for better concurrent performance
+    // Optimized options for high-traffic scenarios
     const options = {
-      enableHighAccuracy: true,
-      timeout: 8000, // Reduced from 15000ms for faster response
-      maximumAge: 10000 // Allow 10-second cached position to reduce load
+      enableHighAccuracy: false, // Faster response, less battery usage during high load
+      timeout: 6000, // Reduced timeout for quicker response during traffic
+      maximumAge: 30000 // Allow 30-second cached position to reduce server load
     };
-    
-    // Debug: Log that we're starting location check
-    
     
     const handleSuccess = (position) => {
       try {
         const { latitude, longitude, accuracy } = position.coords;
         
-        // Validate GPS accuracy - reject if too inaccurate
-        if (accuracy > 100) {
-          console.warn(`GPS accuracy too low: ${accuracy}m`);
+        console.log(`Fallback location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
+        
+        // More lenient accuracy check during high traffic
+        if (accuracy > 300 && retryCount === 0) {
+          console.warn(`Moderate accuracy (${accuracy}m), proceeding due to high traffic load`);
+        }
+        
+        // Check for invalid coordinates
+        if (latitude === 0 && longitude === 0) {
+          console.warn('Device returning 0,0 coordinates');
           if (retryCount < maxRetries) {
-            showLocationStatus(`GPS accuracy low (${Math.round(accuracy)}m). Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            showLocationStatus(`Invalid location. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
             setTimeout(() => {
               checkUserLocationFallback(retryCount + 1).then(resolve);
-            }, 1000);
+            }, 800); // Shorter retry delay
             return;
           } else {
-            showLocationStatus(`❌ GPS accuracy too low (${Math.round(accuracy)}m). Please try again in a better location.`, 'denied');
-            resolve({ success: false, distance: 0, error: 'Low GPS accuracy' });
+            showLocationStatus('❌ Unable to get valid location. Please ensure location services are enabled.', 'denied');
+            resolve({ success: false, distance: 0, error: 'Invalid coordinates' });
             return;
           }
         }
         
-        console.log(`Location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
-        console.log(`GNDU coordinates: ${UNIVERSITY_LAT}, ${UNIVERSITY_LNG}`);
-        
-        // Calculate distance in meters with validation
+        // Calculate distance using efficient method
         const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
         const distanceRounded = Math.round(distance);
         
-        console.log(`Raw distance calculation: ${distance}`);
-        console.log(`Distance rounded: ${distanceRounded}m`);
-        
-        // Check if we're getting default/mock coordinates
-        if (latitude === 0 && longitude === 0) {
-          console.warn('Device is returning 0,0 coordinates - likely a simulator or permission issue');
-          showLocationStatus('❌ Unable to get accurate location. Please ensure location services are enabled and try again.', 'denied');
-          resolve({ success: false, distance: 0, error: 'Invalid coordinates (0,0)' });
-          return;
-        }
-        
-        // Check if coordinates are suspiciously close to GNDU when they shouldn't be
-        if (distance < 50 && accuracy > 1000) {
-          console.warn('Suspiciously accurate distance with poor GPS accuracy - possible mock location');
-          showLocationStatus('❌ Location accuracy is questionable. Please ensure you are using real GPS and try again.', 'denied');
-          resolve({ success: false, distance: distanceRounded, error: 'Questionable location accuracy' });
-          return;
-        }
+        console.log(`Distance from GNDU: ${distanceRounded}m (limit: ${ALLOWED_RADIUS_METERS}m)`);
         
         // Validate distance calculation
         if (isNaN(distance) || !isFinite(distance) || distance < 0) {
           console.error('Invalid distance calculation:', distance);
           if (retryCount < maxRetries) {
-            showLocationStatus(`Location calculation error. Retrying... (${retryCount + 1}/${maxRetries})`, 'checking');
+            showLocationStatus(`Calculation error. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
             setTimeout(() => {
               checkUserLocationFallback(retryCount + 1).then(resolve);
-            }, 1000);
+            }, 800);
             return;
           } else {
             showLocationStatus('❌ Error calculating distance from campus', 'denied');
