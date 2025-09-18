@@ -1077,6 +1077,77 @@ tbody tr:nth-child(even) {
   animation: pulse 2s infinite;
 }
 
+/* Enhanced location status information */
+.location-status .queue-info,
+.location-status .performance-info,
+.location-status .wait-info {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  line-height: 1.4;
+  transition: all 0.3s ease;
+}
+
+.location-status .queue-info {
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
+  border-left: 3px solid #6c757d;
+}
+
+.location-status .performance-info {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+  border-left: 3px solid #28a745;
+}
+
+.location-status .wait-info {
+  background: rgba(255, 152, 0, 0.1);
+  color: #ff9800;
+  border-left: 3px solid #ff9800;
+  font-weight: 500;
+  animation: gentle-pulse 2s infinite;
+}
+
+/* Gentle pulse animation for wait info */
+@keyframes gentle-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+/* Dark theme adjustments for enhanced status */
+[data-theme="dark"] .location-status .queue-info {
+  background: rgba(108, 117, 125, 0.2);
+  color: #adb5bd;
+}
+
+[data-theme="dark"] .location-status .performance-info {
+  background: rgba(40, 167, 69, 0.2);
+  color: #51cf66;
+}
+
+[data-theme="dark"] .location-status .wait-info {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffa726;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 768px) {
+  .location-status .queue-info,
+  .location-status .performance-info,
+  .location-status .wait-info {
+    margin-top: 6px;
+    padding: 4px 8px;
+    font-size: 0.8em;
+  }
+}
+
 .loading-message {
   background: #fff3cd;
   border: 1px solid #ffeaa7;

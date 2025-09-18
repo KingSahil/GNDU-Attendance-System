@@ -12,28 +12,764 @@ const firebaseConfig = window.firebaseConfig || {
 const GOOGLE_MAPS_API_KEY = "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8"; // Using same API key as Firebase
 let googleMapsLoaded = false;
 
-// Rate limiting and traffic management for Google Maps API
+// Enhanced location management system for high-performance concurrent requests
+class LocationManager {
+  constructor() {
+    this.cache = new LocationCache();
+    this.queue = new SmartRequestQueue();
+    this.loadBalancer = new APILoadBalancer();
+    this.fallbackEngine = new FallbackEngine();
+    this.performanceMonitor = new PerformanceMonitor();
+
+    // Start background processes
+    this.startPerformanceMonitoring();
+  }
+
+  async verifyLocation(options = {}) {
+    const startTime = Date.now();
+    const requestId = this.generateRequestId();
+
+    try {
+      this.performanceMonitor.recordRequest(requestId, startTime);
+
+      // Check cache first
+      const cachedResult = await this.cache.get(options.latitude, options.longitude);
+      if (cachedResult) {
+        this.performanceMonitor.recordCacheHit(requestId);
+        return { ...cachedResult, cached: true, requestId };
+      }
+
+      // Queue the request for processing
+      const result = await this.queue.enqueue({
+        id: requestId,
+        coordinates: options,
+        priority: options.priority || 'normal',
+        timestamp: Date.now()
+      });
+
+      // Cache successful results
+      if (result.success) {
+        await this.cache.set(options.latitude, options.longitude, result);
+      }
+
+      this.performanceMonitor.recordSuccess(requestId, Date.now() - startTime, result.method);
+      return { ...result, cached: false, requestId };
+
+    } catch (error) {
+      this.performanceMonitor.recordError(requestId, error);
+      throw error;
+    }
+  }
+
+  generateRequestId() {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  startPerformanceMonitoring() {
+    setInterval(() => {
+      const metrics = this.performanceMonitor.getMetrics();
+      if (metrics.totalRequests > 0) {
+        console.log(`📊 Location Performance: ${metrics.successRate}% success, ${metrics.averageResponseTime}ms avg, ${metrics.cacheHitRate}% cache hits`);
+      }
+    }, 30000);
+  }
+
+  getPerformanceMetrics() {
+    return this.performanceMonitor.getMetrics();
+  }
+}
+
+// Multi-level caching system for location results
+class LocationCache {
+  constructor() {
+    this.immediateCache = new Map(); // 5 seconds for exact matches
+    this.proximityCache = new Map(); // 30 seconds for nearby locations
+    this.sessionCache = new Map(); // 5 minutes for user sessions
+    this.areaCache = new Map(); // 1 hour for general area
+
+    // Start cleanup process
+    setInterval(() => this.cleanup(), 10000); // Cleanup every 10 seconds
+  }
+
+  async get(lat, lng, accuracy = 10) {
+    const key = this.generateKey(lat, lng, accuracy);
+
+    // Check immediate cache first (exact location)
+    const immediate = this.immediateCache.get(key);
+    if (immediate && !this.isExpired(immediate, 5000)) {
+      return immediate.result;
+    }
+
+    // Check proximity cache (nearby locations within 10m)
+    for (const [cacheKey, entry] of this.proximityCache.entries()) {
+      if (!this.isExpired(entry, 30000)) {
+        const distance = this.calculateDistance(lat, lng, entry.coordinates.latitude, entry.coordinates.longitude);
+        if (distance <= 10) { // Within 10 meters
+          return entry.result;
+        }
+      }
+    }
+
+    // Check session cache (user-specific)
+    const sessionKey = `session_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+    const session = this.sessionCache.get(sessionKey);
+    if (session && !this.isExpired(session, 300000)) { // 5 minutes
+      return session.result;
+    }
+
+    // Check area cache (general campus area)
+    const areaKey = `area_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    const area = this.areaCache.get(areaKey);
+    if (area && !this.isExpired(area, 3600000)) { // 1 hour
+      return area.result;
+    }
+
+    return null;
+  }
+
+  async set(lat, lng, result, ttl = 5000) {
+    const timestamp = Date.now();
+    const coordinates = { latitude: lat, longitude: lng };
+
+    // Store in immediate cache
+    const immediateKey = this.generateKey(lat, lng, 1);
+    this.immediateCache.set(immediateKey, {
+      result,
+      timestamp,
+      coordinates,
+      ttl: 5000
+    });
+
+    // Store in proximity cache
+    const proximityKey = this.generateKey(lat, lng, 10);
+    this.proximityCache.set(proximityKey, {
+      result,
+      timestamp,
+      coordinates,
+      ttl: 30000
+    });
+
+    // Store in session cache
+    const sessionKey = `session_${lat.toFixed(4)}_${lng.toFixed(4)}`;
+    this.sessionCache.set(sessionKey, {
+      result,
+      timestamp,
+      coordinates,
+      ttl: 300000
+    });
+
+    // Store in area cache if within campus
+    if (result.success) {
+      const areaKey = `area_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+      this.areaCache.set(areaKey, {
+        result,
+        timestamp,
+        coordinates,
+        ttl: 3600000
+      });
+    }
+  }
+
+  generateKey(lat, lng, accuracy) {
+    return `${lat.toFixed(6)}_${lng.toFixed(6)}_${accuracy}`;
+  }
+
+  isExpired(entry, maxAge) {
+    return (Date.now() - entry.timestamp) > maxAge;
+  }
+
+  calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  cleanup() {
+    const now = Date.now();
+
+    // Cleanup immediate cache (5 seconds)
+    for (const [key, entry] of this.immediateCache.entries()) {
+      if (this.isExpired(entry, 5000)) {
+        this.immediateCache.delete(key);
+      }
+    }
+
+    // Cleanup proximity cache (30 seconds)
+    for (const [key, entry] of this.proximityCache.entries()) {
+      if (this.isExpired(entry, 30000)) {
+        this.proximityCache.delete(key);
+      }
+    }
+
+    // Cleanup session cache (5 minutes)
+    for (const [key, entry] of this.sessionCache.entries()) {
+      if (this.isExpired(entry, 300000)) {
+        this.sessionCache.delete(key);
+      }
+    }
+
+    // Cleanup area cache (1 hour)
+    for (const [key, entry] of this.areaCache.entries()) {
+      if (this.isExpired(entry, 3600000)) {
+        this.areaCache.delete(key);
+      }
+    }
+  }
+}
+
+// Smart request queue with priority handling and batching
+class SmartRequestQueue {
+  constructor() {
+    this.highPriorityQueue = [];
+    this.normalQueue = [];
+    this.lowPriorityQueue = [];
+    this.processing = false;
+    this.maxConcurrent = 8; // Increased from 5
+    this.activeRequests = 0;
+    this.requestDelay = 50; // Reduced from 100ms
+    this.lastProcessTime = 0;
+
+    // Start processing
+    this.startProcessing();
+  }
+
+  async enqueue(request) {
+    return new Promise((resolve, reject) => {
+      const queueItem = {
+        ...request,
+        resolve,
+        reject,
+        enqueuedAt: Date.now()
+      };
+
+      // Add to appropriate queue based on priority
+      switch (request.priority) {
+        case 'high':
+          this.highPriorityQueue.push(queueItem);
+          break;
+        case 'low':
+          this.lowPriorityQueue.push(queueItem);
+          break;
+        default:
+          this.normalQueue.push(queueItem);
+      }
+
+      // Check for duplicate requests and batch them
+      this.deduplicateRequests();
+    });
+  }
+
+  deduplicateRequests() {
+    // Combine similar location requests within 5 meters
+    const allQueues = [this.highPriorityQueue, this.normalQueue, this.lowPriorityQueue];
+
+    allQueues.forEach(queue => {
+      for (let i = 0; i < queue.length - 1; i++) {
+        for (let j = i + 1; j < queue.length; j++) {
+          const req1 = queue[i];
+          const req2 = queue[j];
+
+          if (req1.coordinates && req2.coordinates) {
+            const distance = this.calculateDistance(
+              req1.coordinates.latitude, req1.coordinates.longitude,
+              req2.coordinates.latitude, req2.coordinates.longitude
+            );
+
+            if (distance <= 5) { // Within 5 meters
+              // Mark as duplicate and will resolve with same result
+              req2.isDuplicate = true;
+              req2.originalRequest = req1;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  startProcessing() {
+    setInterval(() => {
+      this.processQueue();
+    }, this.requestDelay);
+  }
+
+  async processQueue() {
+    if (this.processing || this.activeRequests >= this.maxConcurrent) {
+      return;
+    }
+
+    // Process high priority first, then normal, then low
+    const request = this.getNextRequest();
+    if (!request) return;
+
+    this.processing = true;
+    this.activeRequests++;
+
+    try {
+      // Handle duplicate requests
+      if (request.isDuplicate && request.originalRequest) {
+        // Wait for original request to complete
+        // This is a simplified approach - in production, you'd want more sophisticated batching
+        request.resolve(await this.waitForOriginalRequest(request.originalRequest));
+        return;
+      }
+
+      const result = await this.processLocationRequest(request);
+      request.resolve(result);
+    } catch (error) {
+      request.reject(error);
+    } finally {
+      this.activeRequests--;
+      this.processing = false;
+    }
+  }
+
+  getNextRequest() {
+    if (this.highPriorityQueue.length > 0) {
+      return this.highPriorityQueue.shift();
+    }
+    if (this.normalQueue.length > 0) {
+      return this.normalQueue.shift();
+    }
+    if (this.lowPriorityQueue.length > 0) {
+      return this.lowPriorityQueue.shift();
+    }
+    return null;
+  }
+
+  async processLocationRequest(request) {
+    // Use the enhanced location verification
+    return await locationManager.fallbackEngine.executeLocationVerification(request.coordinates);
+  }
+
+  async waitForOriginalRequest(originalRequest) {
+    // Simplified implementation - wait for original request to complete
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (originalRequest.completed) {
+          clearInterval(checkInterval);
+          resolve(originalRequest.result);
+        }
+      }, 100);
+    });
+  }
+
+  getQueueStatus() {
+    return {
+      high: this.highPriorityQueue.length,
+      normal: this.normalQueue.length,
+      low: this.lowPriorityQueue.length,
+      active: this.activeRequests,
+      total: this.highPriorityQueue.length + this.normalQueue.length + this.lowPriorityQueue.length
+    };
+  }
+}
+
+// Load balancer for multiple API keys
+class APILoadBalancer {
+  constructor() {
+    this.apiKeys = [
+      GOOGLE_MAPS_API_KEY, // Primary key
+      // Add additional API keys here for load distribution
+      // "AIzaSyC...", // Secondary key
+      // "AIzaSyD...", // Tertiary key
+    ];
+    this.keyUsage = new Map();
+    this.keyHealth = new Map();
+    this.currentKeyIndex = 0;
+
+    // Initialize key tracking
+    this.apiKeys.forEach(key => {
+      this.keyUsage.set(key, { requests: 0, errors: 0, lastUsed: 0 });
+      this.keyHealth.set(key, { available: true, rateLimitUntil: 0 });
+    });
+  }
+
+  getAvailableKey() {
+    const now = Date.now();
+
+    // Find the least used available key
+    let bestKey = null;
+    let lowestUsage = Infinity;
+
+    for (const key of this.apiKeys) {
+      const health = this.keyHealth.get(key);
+      const usage = this.keyUsage.get(key);
+
+      // Skip if rate limited
+      if (!health.available || now < health.rateLimitUntil) {
+        continue;
+      }
+
+      // Find key with lowest usage
+      if (usage.requests < lowestUsage) {
+        lowestUsage = usage.requests;
+        bestKey = key;
+      }
+    }
+
+    return bestKey || this.apiKeys[0]; // Fallback to primary key
+  }
+
+  reportUsage(key, success, responseTime, error = null) {
+    const usage = this.keyUsage.get(key);
+    const health = this.keyHealth.get(key);
+
+    if (usage) {
+      usage.requests++;
+      usage.lastUsed = Date.now();
+
+      if (!success) {
+        usage.errors++;
+
+        // Handle rate limit errors
+        if (error && error.message && error.message.includes('OVER_QUERY_LIMIT')) {
+          health.available = false;
+          health.rateLimitUntil = Date.now() + (60 * 1000); // 1 minute cooldown
+
+          // Auto-recover after cooldown
+          setTimeout(() => {
+            health.available = true;
+            health.rateLimitUntil = 0;
+          }, 60 * 1000);
+        }
+      }
+    }
+  }
+
+  getKeyStats() {
+    const stats = {};
+    for (const [key, usage] of this.keyUsage.entries()) {
+      const health = this.keyHealth.get(key);
+      stats[key.substr(-8)] = { // Show last 8 chars of key
+        requests: usage.requests,
+        errors: usage.errors,
+        available: health.available,
+        errorRate: usage.requests > 0 ? (usage.errors / usage.requests * 100).toFixed(1) + '%' : '0%'
+      };
+    }
+    return stats;
+  }
+}
+
+// Enhanced fallback engine with multiple strategies
+class FallbackEngine {
+  constructor() {
+    this.fallbackMethods = [
+      'googleMapsAPI',
+      'cachedProximity',
+      'nativeGeolocation',
+      'manualEntry'
+    ];
+  }
+
+  async executeLocationVerification(coordinates) {
+    const methods = [...this.fallbackMethods];
+    let lastError = null;
+
+    for (const method of methods) {
+      try {
+        const result = await this.executeMethod(method, coordinates);
+        if (result.success !== undefined) {
+          return { ...result, method };
+        }
+      } catch (error) {
+        console.warn(`Location method ${method} failed:`, error.message);
+        lastError = error;
+        continue;
+      }
+    }
+
+    throw lastError || new Error('All location verification methods failed');
+  }
+
+  async executeMethod(method, coordinates) {
+    switch (method) {
+      case 'googleMapsAPI':
+        return await this.verifyWithGoogleMaps(coordinates);
+
+      case 'cachedProximity':
+        return await this.verifyWithCache(coordinates);
+
+      case 'nativeGeolocation':
+        return await this.verifyWithNativeGeolocation(coordinates);
+
+      case 'manualEntry':
+        return await this.verifyWithManualEntry(coordinates);
+
+      default:
+        throw new Error(`Unknown verification method: ${method}`);
+    }
+  }
+
+  async verifyWithGoogleMaps(coordinates) {
+    if (!window.google || !window.google.maps || !window.google.maps.geometry) {
+      throw new Error('Google Maps API not available');
+    }
+
+    const key = locationManager.loadBalancer.getAvailableKey();
+    const startTime = Date.now();
+
+    try {
+      const userLocation = new google.maps.LatLng(coordinates.latitude, coordinates.longitude);
+      const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
+      const distance = google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
+
+      locationManager.loadBalancer.reportUsage(key, true, Date.now() - startTime);
+
+      return {
+        success: distance <= ALLOWED_RADIUS_METERS,
+        distance: Math.round(distance),
+        accuracy: coordinates.accuracy || 0
+      };
+    } catch (error) {
+      locationManager.loadBalancer.reportUsage(key, false, Date.now() - startTime, error);
+      throw error;
+    }
+  }
+
+  async verifyWithCache(coordinates) {
+    // This would typically check a more sophisticated cache
+    // For now, we'll skip this method
+    throw new Error('No cached result available');
+  }
+
+  async verifyWithNativeGeolocation(coordinates) {
+    const distance = this.calculateHaversineDistance(
+      coordinates.latitude, coordinates.longitude,
+      UNIVERSITY_LAT, UNIVERSITY_LNG
+    );
+
+    return {
+      success: distance <= ALLOWED_RADIUS_METERS,
+      distance: Math.round(distance),
+      accuracy: coordinates.accuracy || 0
+    };
+  }
+
+  calculateHaversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  }
+
+  async verifyWithManualEntry(coordinates) {
+    // This would show a manual location entry form
+    // For now, we'll use native calculation as fallback
+    return await this.verifyWithNativeGeolocation(coordinates);
+  }
+}
+
+// Performance monitoring and metrics collection
+class PerformanceMonitor {
+  constructor() {
+    this.metrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      cacheHits: 0,
+      totalResponseTime: 0,
+      methodUsage: {
+        googleMapsAPI: 0,
+        cachedProximity: 0,
+        nativeGeolocation: 0,
+        manualEntry: 0
+      },
+      errors: new Map(),
+      requestHistory: []
+    };
+
+    this.startTime = Date.now();
+  }
+
+  recordRequest(requestId, startTime) {
+    this.metrics.totalRequests++;
+  }
+
+  recordSuccess(requestId, responseTime, method) {
+    this.metrics.successfulRequests++;
+    this.metrics.totalResponseTime += responseTime;
+    this.metrics.methodUsage[method] = (this.metrics.methodUsage[method] || 0) + 1;
+
+    // Keep recent history for analysis
+    this.metrics.requestHistory.push({
+      requestId,
+      responseTime,
+      method,
+      timestamp: Date.now(),
+      success: true
+    });
+
+    // Keep only last 100 requests
+    if (this.metrics.requestHistory.length > 100) {
+      this.metrics.requestHistory.shift();
+    }
+  }
+
+  recordCacheHit(requestId) {
+    this.metrics.cacheHits++;
+  }
+
+  recordError(requestId, error) {
+    const errorType = error.name || 'UnknownError';
+    const count = this.metrics.errors.get(errorType) || 0;
+    this.metrics.errors.set(errorType, count + 1);
+
+    this.metrics.requestHistory.push({
+      requestId,
+      error: errorType,
+      timestamp: Date.now(),
+      success: false
+    });
+  }
+
+  getMetrics() {
+    const totalRequests = this.metrics.totalRequests;
+    const successfulRequests = this.metrics.successfulRequests;
+
+    return {
+      totalRequests,
+      successfulRequests,
+      successRate: totalRequests > 0 ? ((successfulRequests / totalRequests) * 100).toFixed(1) : '0',
+      averageResponseTime: successfulRequests > 0 ? Math.round(this.metrics.totalResponseTime / successfulRequests) : 0,
+      cacheHitRate: totalRequests > 0 ? ((this.metrics.cacheHits / totalRequests) * 100).toFixed(1) : '0',
+      methodUsage: this.metrics.methodUsage,
+      errors: Object.fromEntries(this.metrics.errors),
+      uptime: Date.now() - this.startTime
+    };
+  }
+}
+
+// Initialize the enhanced location management system
+const locationManager = new LocationManager();
+
+// Legacy variables for backward compatibility
 let apiRequestQueue = [];
 let isProcessingQueue = false;
 let lastApiRequest = 0;
-const API_REQUEST_DELAY = 100; // Minimum 100ms between API requests
-const MAX_CONCURRENT_REQUESTS = 5;
+const API_REQUEST_DELAY = 50; // Reduced from 100ms
+const MAX_CONCURRENT_REQUESTS = 8; // Increased from 5
 let activeRequests = 0;
 
-// Traffic monitoring
+// Traffic monitoring (legacy - now handled by PerformanceMonitor)
 let totalLocationRequests = 0;
 let successfulGoogleRequests = 0;
 let fallbackRequests = 0;
 let startTime = Date.now();
 
-// Log traffic statistics periodically
+// Enhanced performance monitoring with detailed metrics
 setInterval(() => {
-  if (totalLocationRequests > 0) {
-    const successRate = ((successfulGoogleRequests / totalLocationRequests) * 100).toFixed(1);
-    const fallbackRate = ((fallbackRequests / totalLocationRequests) * 100).toFixed(1);
-    console.log(`📊 Location Stats: ${totalLocationRequests} total, ${successRate}% Google success, ${fallbackRate}% fallback used`);
+  if (typeof locationManager !== 'undefined') {
+    const metrics = locationManager.getPerformanceMetrics();
+    const queueStatus = locationManager.queue.getQueueStatus();
+    const keyStats = locationManager.loadBalancer.getKeyStats();
+
+    if (metrics.totalRequests > 0) {
+      console.log(`📊 Enhanced Location Performance:`);
+      console.log(`   Requests: ${metrics.totalRequests} total, ${metrics.successRate}% success`);
+      console.log(`   Speed: ${metrics.averageResponseTime}ms avg response time`);
+      console.log(`   Cache: ${metrics.cacheHitRate}% hit rate`);
+      console.log(`   Queue: ${queueStatus.total} pending, ${queueStatus.active} active`);
+      console.log(`   Methods: Google ${metrics.methodUsage.googleMapsAPI || 0}, Native ${metrics.methodUsage.nativeGeolocation || 0}, Cached ${metrics.methodUsage.cachedProximity || 0}`);
+
+      // Show API key health if multiple keys
+      const keyCount = Object.keys(keyStats).length;
+      if (keyCount > 1) {
+        console.log(`   API Keys: ${keyCount} configured`);
+        Object.entries(keyStats).forEach(([key, stats]) => {
+          console.log(`     ${key}: ${stats.requests} requests, ${stats.errorRate} error rate, ${stats.available ? 'available' : 'rate limited'}`);
+        });
+      }
+    }
+  } else {
+    // Legacy logging
+    if (totalLocationRequests > 0) {
+      const successRate = ((successfulGoogleRequests / totalLocationRequests) * 100).toFixed(1);
+      const fallbackRate = ((fallbackRequests / totalLocationRequests) * 100).toFixed(1);
+      console.log(`📊 Location Stats: ${totalLocationRequests} total, ${successRate}% Google success, ${fallbackRate}% fallback used`);
+    }
   }
 }, 30000); // Log every 30 seconds if there's activity
+
+// Add performance dashboard function for debugging
+window.showLocationPerformance = function () {
+  if (typeof locationManager === 'undefined') {
+    console.log('Enhanced location system not initialized');
+    return;
+  }
+
+  const metrics = locationManager.getPerformanceMetrics();
+  const queueStatus = locationManager.queue.getQueueStatus();
+  const keyStats = locationManager.loadBalancer.getKeyStats();
+
+  console.log('🚀 Location System Performance Dashboard');
+  console.log('==========================================');
+  console.log(`Total Requests: ${metrics.totalRequests}`);
+  console.log(`Success Rate: ${metrics.successRate}%`);
+  console.log(`Average Response Time: ${metrics.averageResponseTime}ms`);
+  console.log(`Cache Hit Rate: ${metrics.cacheHitRate}%`);
+  console.log(`System Uptime: ${Math.round(metrics.uptime / 1000)}s`);
+  console.log('');
+  console.log('Queue Status:');
+  console.log(`  High Priority: ${queueStatus.high}`);
+  console.log(`  Normal Priority: ${queueStatus.normal}`);
+  console.log(`  Low Priority: ${queueStatus.low}`);
+  console.log(`  Active Requests: ${queueStatus.active}`);
+  console.log('');
+  console.log('Method Usage:');
+  Object.entries(metrics.methodUsage).forEach(([method, count]) => {
+    if (count > 0) {
+      console.log(`  ${method}: ${count} requests`);
+    }
+  });
+  console.log('');
+  console.log('API Key Statistics:');
+  Object.entries(keyStats).forEach(([key, stats]) => {
+    console.log(`  Key ${key}:`);
+    console.log(`    Requests: ${stats.requests}`);
+    console.log(`    Error Rate: ${stats.errorRate}`);
+    console.log(`    Status: ${stats.available ? 'Available' : 'Rate Limited'}`);
+  });
+
+  if (Object.keys(metrics.errors).length > 0) {
+    console.log('');
+    console.log('Error Summary:');
+    Object.entries(metrics.errors).forEach(([error, count]) => {
+      console.log(`  ${error}: ${count} occurrences`);
+    });
+  }
+};
 
 
 // Initialize Firebase
@@ -49,7 +785,7 @@ let lastFirebaseOperation = Date.now();
 
 function updateConnectionQuality() {
   const timeSinceLastOp = Date.now() - lastFirebaseOperation;
-  
+
   if (timeSinceLastOp > 10000) { // 10 seconds since last operation
     connectionQuality = 'poor';
   } else if (timeSinceLastOp > 5000) { // 5 seconds
@@ -57,7 +793,7 @@ function updateConnectionQuality() {
   } else {
     connectionQuality = 'good';
   }
-  
+
   return connectionQuality;
 }
 // Global state used across attendance features
@@ -68,9 +804,9 @@ let sessionSecretCode = '';
 let checkinUrl = '';
 
 // Wait for DOM to be fully loaded before initializing
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
-  
+
   // Check for session or student view in URL first
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
@@ -78,18 +814,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (sessionId) {
     // If there's a session ID, show check-in page and validate session
-    
-    
+
+
     // Always show the check-in page first, then validate session from server
     // This prevents immediate expiry from potentially stale cache data
-    
+
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'none';
     document.getElementById('studentCheckin').style.display = 'block';
     showStudentCheckin(sessionId);
   } else if (view === 'student') {
     // On refresh with student details URL, go to homepage instead
-    
+
     // Strip query and show dashboard; modal can be opened via click only
     if (window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -107,7 +843,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // correct the view if the session is actually invalid/expired.
       const cachedUser = localStorage.getItem('user');
       if (cachedUser) {
-        
+
         showDashboard();
       } else {
         // Fall back to showing login screen
@@ -115,7 +851,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   }
-  
+
   // Initialize Firebase in the background
   initializeFirebase()
     .then(() => {
@@ -129,14 +865,14 @@ document.addEventListener('DOMContentLoaded', function() {
               uid: user.uid,
               displayName: user.displayName
             }));
-            
+
             // If we're not already showing the dashboard, update the UI
             handlePageDisplay(user);
           } else {
             // Clear cached user on logout
             localStorage.removeItem('user');
           }
-          
+
           // Unsubscribe after first auth state change
           if (unsubscribe) {
             unsubscribe();
@@ -150,7 +886,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return loadStudentsFromFirestore();
     })
     .catch(error => {
-      
+
       // If there's a session ID, check expiry even if Firebase init failed
       if (sessionId) {
         // Check local storage for expiry even when Firebase fails
@@ -174,7 +910,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('teacherDashboard').style.display = 'none';
         document.getElementById('studentCheckin').style.display = 'none';
         document.getElementById('studentDetails').style.display = 'block';
-        loadStudentDetailsPage().catch(() => {});
+        loadStudentDetailsPage().catch(() => { });
       }
     });
 });
@@ -191,7 +927,7 @@ function initializeFirebase() {
       const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
       const missing = requiredKeys.filter(k => !firebaseConfig || !firebaseConfig[k]);
       if (missing.length) {
-        
+
         updateFirebaseStatus('🔴 Firebase config is missing. Please configure env.js', 'error');
         return reject(new Error('Missing Firebase config: ' + missing.join(', ')));
       }
@@ -199,38 +935,38 @@ function initializeFirebase() {
       firebase.initializeApp(firebaseConfig);
       db = firebase.firestore();
       auth = firebase.auth();
-      
-      
-      
+
+
+
       // Set auth persistence
       auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
         .then(() => {
-          
-          
+
+
           // Enable offline persistence for Firestore
           return db.enablePersistence({ experimentalForceOwningTab: true });
         })
         .then(() => {
-          
-          
+
+
           // Enable network but don't fail if offline
           return db.enableNetwork().catch(err => {
-            
+
             updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
           });
         })
         .then(() => {
-          
+
           firebaseInitialized = true;
           updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
           resolve();
         })
         .catch((err) => {
-          
+
           if (err.code === 'failed-precondition') {
-            
+
           } else if (err.code === 'unimplemented') {
-            
+
           }
           // Still resolve even if there were non-critical errors
           firebaseInitialized = true;
@@ -238,7 +974,7 @@ function initializeFirebase() {
           resolve();
         });
     } catch (error) {
-      
+
       updateFirebaseStatus('🔴 Failed to connect to Firebase', 'error');
       reject(error);
     }
@@ -252,28 +988,28 @@ let isStudentsLoading = false;
 async function loadStudentsFromFirestore() {
   // If already loading or already loaded, return
   if (isStudentsLoading || students.length > 0) {
-    
+
     return;
   }
 
   isStudentsLoading = true;
-  
+
   try {
     if (!db) {
-      
+
       isStudentsLoading = false;
       return;
     }
-    
-    
+
+
     const snapshot = await db.collection('students').orderBy('name').get({
       source: 'server'  // Force server fetch to avoid cache issues
     });
-    
+
     // Clear existing students and add new ones
     students.length = 0;
     const firestoreStudents = [];
-    
+
     snapshot.docs.forEach(doc => {
       try {
         const data = doc.data();
@@ -287,30 +1023,30 @@ async function loadStudentsFromFirestore() {
           });
         }
       } catch (e) {
-        
+
       }
     });
-    
+
     // Ensure Jatin (id: 17032400065) is always at the end
     const jatinIndex = firestoreStudents.findIndex(s => s.id === '17032400065');
     if (jatinIndex !== -1) {
       const jatin = firestoreStudents.splice(jatinIndex, 1)[0];
       firestoreStudents.push(jatin);
     }
-    
+
     students.push(...firestoreStudents);
-    
-    
+
+
     // Update UI
     const loadingMsg = document.getElementById('loadingMessage');
     if (loadingMsg) loadingMsg.style.display = 'none';
-    
+
     // Revalidate the form to enable Start button if needed
     if (document.getElementById('startBtn')) {
       validateForm();
     }
   } catch (e) {
-    
+
     updateFirebaseStatus('🔴 Failed to load students from Firestore', 'error');
   } finally {
     isStudentsLoading = false;
@@ -320,7 +1056,7 @@ async function loadStudentsFromFirestore() {
 // Location checking variables - GNDU coordinates
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 20000;  // 200 meters radius
+const ALLOWED_RADIUS_METERS = 200;  // 200 meters radius
 const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
@@ -358,7 +1094,7 @@ function loadGoogleMapsAPI() {
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async&callback=initGoogleMaps`;
     script.async = true;
     script.defer = true;
-    
+
     // Add global callback function
     window.initGoogleMaps = () => {
       googleMapsLoaded = true;
@@ -366,7 +1102,7 @@ function loadGoogleMapsAPI() {
       delete window.initGoogleMaps; // Clean up
       resolve();
     };
-    
+
     script.onload = () => {
       // Fallback if callback doesn't fire
       if (window.google && window.google.maps) {
@@ -374,29 +1110,48 @@ function loadGoogleMapsAPI() {
         resolve();
       }
     };
-    
+
     script.onerror = (error) => {
       console.error('Failed to load Google Maps API:', error);
       delete window.initGoogleMaps; // Clean up
       reject(new Error('Google Maps API failed to load'));
     };
-    
+
     // Add timeout to prevent hanging
     const timeout = setTimeout(() => {
       console.error('Google Maps API loading timeout');
       delete window.initGoogleMaps;
       reject(new Error('Google Maps API loading timeout'));
     }, 15000); // 15 second timeout
-    
+
     script.addEventListener('load', () => clearTimeout(timeout));
     script.addEventListener('error', () => clearTimeout(timeout));
-    
+
     document.head.appendChild(script);
   });
 }
 
-// Queue system for managing Google Maps API requests during high traffic
+// Legacy queue system - now handled by LocationManager but kept for compatibility
 async function queueGoogleMapsRequest(requestFunction) {
+  // Redirect to new system if available
+  if (typeof locationManager !== 'undefined' && locationManager.queue) {
+    return new Promise((resolve, reject) => {
+      // Create a mock request for the legacy function
+      const mockRequest = {
+        id: `legacy_${Date.now()}`,
+        coordinates: { latitude: 0, longitude: 0 }, // Will be handled by requestFunction
+        priority: 'normal',
+        timestamp: Date.now(),
+        legacyFunction: requestFunction
+      };
+
+      locationManager.queue.enqueue(mockRequest)
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  // Fallback to original implementation if new system not available
   return new Promise((resolve, reject) => {
     apiRequestQueue.push({ requestFunction, resolve, reject });
     processRequestQueue();
@@ -404,24 +1159,30 @@ async function queueGoogleMapsRequest(requestFunction) {
 }
 
 async function processRequestQueue() {
+  // Use new system if available
+  if (typeof locationManager !== 'undefined' && locationManager.queue) {
+    return; // New system handles this automatically
+  }
+
+  // Legacy implementation
   if (isProcessingQueue || apiRequestQueue.length === 0) {
     return;
   }
-  
+
   isProcessingQueue = true;
-  
+
   while (apiRequestQueue.length > 0 && activeRequests < MAX_CONCURRENT_REQUESTS) {
     const { requestFunction, resolve, reject } = apiRequestQueue.shift();
-    
+
     // Ensure minimum delay between requests
     const timeSinceLastRequest = Date.now() - lastApiRequest;
     if (timeSinceLastRequest < API_REQUEST_DELAY) {
       await new Promise(resolve => setTimeout(resolve, API_REQUEST_DELAY - timeSinceLastRequest));
     }
-    
+
     activeRequests++;
     lastApiRequest = Date.now();
-    
+
     try {
       const result = await requestFunction();
       resolve(result);
@@ -431,196 +1192,223 @@ async function processRequestQueue() {
       activeRequests--;
     }
   }
-  
+
   isProcessingQueue = false;
-  
+
   // Continue processing if there are more requests
   if (apiRequestQueue.length > 0) {
     setTimeout(processRequestQueue, API_REQUEST_DELAY);
   }
 }
 
-// Google-enhanced location verification with traffic management and better error handling
+// Enhanced location verification using the new LocationManager system
 async function checkUserLocationWithGoogle(retryCount = 0) {
-  const maxRetries = 2; // Reduced retries for faster fallback during high traffic
-  
+  const maxRetries = 2;
+
   try {
-    // First, try to load Google Maps API with timeout
-    await Promise.race([
-      loadGoogleMapsAPI(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('API loading timeout')), 8000)
-      )
-    ]);
-    
-    showLocationStatus('📍 Getting your location with enhanced accuracy...', 'checking', true);
-    
-    return new Promise((resolve) => {
-      // Optimized options for high-traffic scenarios
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 8000, // Reduced timeout for faster response
-        maximumAge: 15000 // Allow 15-second cached position to reduce load
-      };
+    // Show initial status
+    showLocationStatus('📍 Getting your location with enhanced performance...', 'checking', true);
 
-      const handleSuccess = async (position) => {
-        try {
-          const { latitude, longitude, accuracy } = position.coords;
-          
-          console.log(`Location obtained: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
-          
-          // Validate coordinates
-          if (latitude === 0 && longitude === 0) {
-            throw new Error('Invalid coordinates (0,0)');
-          }
-          
-          // More lenient accuracy check for high-traffic periods
-          if (accuracy > 1000 && retryCount === 0) {
-            console.warn(`Low accuracy (${accuracy}m), but proceeding due to traffic load`);
-          }
-          
-          let distance;
-          let method = 'fallback';
-          
-          // Use queued Google Maps API request to manage traffic
-          try {
-            if (window.google && window.google.maps && window.google.maps.geometry) {
-              const googleRequest = async () => {
-                const userLocation = new google.maps.LatLng(latitude, longitude);
-                const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
-                return google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
-              };
-              
-              // Queue the request to manage API rate limits
-              distance = await Promise.race([
-                queueGoogleMapsRequest(googleRequest),
-                new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Google API timeout')), 3000)
-                )
-              ]);
-              
-              method = 'google-enhanced';
-              console.log(`Google Maps distance calculation: ${distance}m`);
-            } else {
-              throw new Error('Google Maps not available');
-            }
-          } catch (googleError) {
-            console.warn('Google Maps calculation failed, using fallback:', googleError.message);
-            // Fall back to Haversine formula
-            distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
-            method = 'native-fallback';
-            console.log(`Fallback distance calculation: ${distance}m`);
-          }
-          
-          const distanceRounded = Math.round(distance);
-          
-          // Validate distance calculation
-          if (isNaN(distance) || !isFinite(distance) || distance < 0) {
-            throw new Error('Invalid distance calculation');
-          }
-          
-          if (distance <= ALLOWED_RADIUS_METERS) {
-            const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${method})`;
-            showLocationStatus(successMsg, 'allowed');
-            resolve({ success: true, distance: distanceRounded, method: method });
-          } else {
-            let statusMsg;
-            if (distance > 50000) {
-              statusMsg = `❌ You're ${Math.round(distance/1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-            } else if (distance > 1000) {
-              statusMsg = `❌ You're ${(distance/1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-            } else {
-              statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-            }
-            
-            showLocationStatus(statusMsg, 'denied');
-            resolve({ success: false, distance: distanceRounded, method: method });
-          }
-          
-        } catch (error) {
-          console.error('Error processing location:', error);
-          if (retryCount < maxRetries) {
-            showLocationStatus(`Processing error. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
-            setTimeout(() => {
-              checkUserLocationWithGoogle(retryCount + 1).then(resolve);
-            }, 1000); // Shorter delay for retry
-          } else {
-            // Quick fallback to standard geolocation
-            console.log('Google processing failed, using standard geolocation');
-            checkUserLocationFallback().then(resolve);
-          }
-        }
-      };
+    // Get current position with optimized settings
+    const position = await getCurrentPositionOptimized();
+    const { latitude, longitude, accuracy } = position.coords;
 
-      const handleError = (error) => {
-        console.error('Geolocation error:', error);
-        
-        // During high traffic, fail faster and use fallback
-        if (retryCount < maxRetries && error.code !== error.PERMISSION_DENIED) {
-          showLocationStatus(`Location error. Retrying... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
-          setTimeout(() => {
-            checkUserLocationWithGoogle(retryCount + 1).then(resolve);
-          }, 1000);
-        } else {
-          // Quick fallback to standard geolocation
-          console.log('Location failed, using fallback method');
-          checkUserLocationFallback().then(resolve);
-        }
-      };
+    console.log(`Location obtained: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
 
-      // Use the geolocation API
-      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+    // Validate coordinates
+    if (latitude === 0 && longitude === 0) {
+      throw new Error('Invalid coordinates (0,0)');
+    }
+
+    // Show queue status if there are pending requests
+    const queueStatus = locationManager.queue.getQueueStatus();
+    if (queueStatus.total > 0) {
+      showLocationStatus(`📍 Processing location... (${queueStatus.total} requests in queue)`, 'checking', true);
+    }
+
+    // Use the enhanced LocationManager for verification
+    const result = await locationManager.verifyLocation({
+      latitude,
+      longitude,
+      accuracy,
+      priority: retryCount > 0 ? 'high' : 'normal' // Higher priority for retries
     });
-    
+
+    const distanceRounded = Math.round(result.distance);
+
+    // Show appropriate status message
+    if (result.success) {
+      const cacheStatus = result.cached ? ' (cached)' : '';
+      const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${result.method}${cacheStatus})`;
+      showLocationStatus(successMsg, 'allowed');
+
+      // Update legacy counters for compatibility
+      totalLocationRequests++;
+      if (result.method === 'googleMapsAPI') {
+        successfulGoogleRequests++;
+      } else {
+        fallbackRequests++;
+      }
+
+      return {
+        success: true,
+        distance: distanceRounded,
+        method: result.method,
+        cached: result.cached
+      };
+    } else {
+      let statusMsg;
+      if (result.distance > 50000) {
+        statusMsg = `❌ You're ${Math.round(result.distance / 1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+      } else if (result.distance > 1000) {
+        statusMsg = `❌ You're ${(result.distance / 1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+      } else {
+        statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+      }
+
+      showLocationStatus(statusMsg, 'denied');
+
+      totalLocationRequests++;
+      if (result.method === 'googleMapsAPI') {
+        successfulGoogleRequests++;
+      } else {
+        fallbackRequests++;
+      }
+
+      return {
+        success: false,
+        distance: distanceRounded,
+        method: result.method,
+        cached: result.cached
+      };
+    }
+
   } catch (error) {
-    console.error('Failed to initialize Google location services:', error.message);
-    // Immediate fallback if Google services fail to initialize
-    return checkUserLocationFallback();
+    console.error('Enhanced location verification failed:', error);
+
+    // Retry logic with exponential backoff
+    if (retryCount < maxRetries) {
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 second delay
+      showLocationStatus(`Location error. Retrying in ${delay / 1000}s... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return checkUserLocationWithGoogle(retryCount + 1);
+    } else {
+      // Final fallback to basic geolocation
+      console.log('All enhanced methods failed, using basic fallback');
+      showLocationStatus('Using basic location verification...', 'checking');
+      return checkUserLocationFallback();
+    }
   }
+}
+
+// Optimized geolocation function with better error handling
+function getCurrentPositionOptimized() {
+  return new Promise((resolve, reject) => {
+    // Adaptive timeout based on current system load
+    const queueStatus = locationManager.queue.getQueueStatus();
+    const baseTimeout = 8000;
+    const loadFactor = Math.min(queueStatus.total / 10, 2); // Max 2x timeout increase
+    const adaptiveTimeout = baseTimeout + (baseTimeout * loadFactor * 0.5);
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: adaptiveTimeout,
+      maximumAge: queueStatus.total > 5 ? 30000 : 15000 // Longer cache during high load
+    };
+
+    const handleSuccess = (position) => {
+      // Validate position data
+      if (!position || !position.coords) {
+        reject(new Error('Invalid position data'));
+        return;
+      }
+
+      const { latitude, longitude, accuracy } = position.coords;
+
+      // Basic coordinate validation
+      if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+        latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        reject(new Error('Invalid coordinates received'));
+        return;
+      }
+
+      // During high load, be more lenient with accuracy
+      const maxAccuracy = queueStatus.total > 10 ? 200 : 100;
+      if (accuracy > maxAccuracy) {
+        console.warn(`Low accuracy (${accuracy}m) but proceeding due to system load`);
+      }
+
+      resolve(position);
+    };
+
+    const handleError = (error) => {
+      let errorMessage = 'Location access failed';
+
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessage = 'Location permission denied. Please enable location access.';
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessage = 'Location information unavailable. Please try again.';
+          break;
+        case error.TIMEOUT:
+          errorMessage = 'Location request timed out. Please try again.';
+          break;
+        default:
+          errorMessage = error.message || 'Unknown location error';
+      }
+
+      reject(new Error(errorMessage));
+    };
+
+    // Get current position
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
+  });
 }
 
 // Cached session retrieval to reduce Firebase load
 async function getCachedSession(sessionId) {
   const cacheKey = `session_${sessionId}`;
   const cached = sessionCache.get(cacheKey);
-  
+
   // Return cached session if still valid
   if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
     console.log('Using cached session data');
     return cached.data;
   }
-  
+
   // Check if there's already a pending request for this session
   if (firebaseRequestDebounce.has(cacheKey)) {
     console.log('Waiting for existing session request');
     return firebaseRequestDebounce.get(cacheKey);
   }
-  
+
   // Create new request and cache the promise
   const requestPromise = (async () => {
     try {
       console.log('Fetching fresh session data from Firebase');
       const doc = await db.collection('attendanceSessions').doc(sessionId).get();
-      
+
       if (doc.exists) {
         const sessionData = doc.data();
-        
+
         // Convert Firestore Timestamp to proper format
         if (sessionData.expiryTime && typeof sessionData.expiryTime.toDate === 'function') {
           sessionData.expiryTime = sessionData.expiryTime.toDate().toISOString();
         } else if (sessionData.expiryTime && typeof sessionData.expiryTime.seconds === 'number') {
           sessionData.expiryTime = new Date(sessionData.expiryTime.seconds * 1000).toISOString();
         }
-        
+
         // Cache the result
         sessionCache.set(cacheKey, {
           data: sessionData,
           timestamp: Date.now()
         });
-        
+
         // Update localStorage cache as well
         localStorage.setItem('attendanceSession_' + sessionId, JSON.stringify(sessionData));
-        
+
         return sessionData;
       } else {
         throw new Error('Session not found');
@@ -630,10 +1418,10 @@ async function getCachedSession(sessionId) {
       firebaseRequestDebounce.delete(cacheKey);
     }
   })();
-  
+
   // Store the promise in debounce map
   firebaseRequestDebounce.set(cacheKey, requestPromise);
-  
+
   return requestPromise;
 }
 
@@ -676,7 +1464,7 @@ const timetable = {
 
 const subjectNames = {
   'CEL1020': 'Engineering Mechanics',
-  'MEL1021': 'Engineering Graphics & Drafting', 
+  'MEL1021': 'Engineering Graphics & Drafting',
   'MTL1001': 'Mathematics I',
   'PHL1083': 'Physics',
   'PBL1021': 'Punjabi (Compulsory)',
@@ -685,16 +1473,16 @@ const subjectNames = {
 };
 
 // Firebase Authentication functions
-window.handleLogin = async function() {
-  
-  
+window.handleLogin = async function () {
+
+
   // Check if auth is initialized
   if (!auth) {
-    
+
     alert('Authentication service is not ready. Please refresh the page.');
     return;
   }
-  
+
   const email = document.getElementById('loginEmail')?.value?.trim();
   const password = document.getElementById('loginPassword')?.value;
   const messageDiv = document.getElementById('loginMessage');
@@ -709,25 +1497,25 @@ window.handleLogin = async function() {
     loginBtn.disabled = true;
     loginBtn.textContent = 'Signing in...';
   }
-  
+
   if (messageDiv) { clearElement(messageDiv); }
 
   try {
-    
+
     // Sign in with email and password
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
-    
-    
-    
+
+
+
     if (messageDiv) { setMessage(messageDiv, 'success', '✅ Login successful! Redirecting...'); }
-    
+
     // Show dashboard after successful login
     showDashboard();
-    
+
   } catch (error) {
-    
-    
+
+
     let errorMessage = 'Login failed. Please try again.';
     switch (error.code) {
       case 'auth/user-not-found':
@@ -749,7 +1537,7 @@ window.handleLogin = async function() {
         errorMessage = error.message || 'Login failed. Please try again.';
         break;
     }
-    
+
     setMessage(messageDiv, 'error', `❌ ${errorMessage}`);
     loginBtn.disabled = false;
     loginBtn.textContent = 'Login';
@@ -761,48 +1549,48 @@ async function handleLogout() {
     try {
       // Check if in guest mode
       const isGuestMode = localStorage.getItem('guestMode') === 'true';
-      
+
       if (!isGuestMode) {
         // Sign out from Firebase for authenticated users
         await auth.signOut();
       }
-      
+
       // Clear guest mode flags
       localStorage.removeItem('guestMode');
       localStorage.removeItem('userType');
-      
+
       // Clear any existing sessions
       sessionId = null;
       currentSession = null;
       attendance = {};
       attendanceTime = {};
-      
+
       // Reset UI
       document.getElementById('loginEmail').value = '';
       document.getElementById('loginPassword').value = '';
       document.getElementById('loginMessage').innerHTML = '';
-      
+
       // Reset any modified header text
       const header = document.querySelector('.login-header h1');
       if (header) {
         header.textContent = '🔐 Secure Login';
       }
-      
+
       // Show login screen and hide others
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('teacherDashboard').style.display = 'none';
       document.getElementById('studentGuestDashboard').style.display = 'none';
       document.getElementById('studentCheckin').style.display = 'none';
-      
+
       // Reset any other UI elements if needed
       const statusElement = document.getElementById('firebaseStatus');
       if (statusElement) {
         statusElement.textContent = '🔄 Connecting to Firebase...';
       }
-      
-      
+
+
     } catch (error) {
-      
+
       alert('Error signing out. Please try again.');
     }
   }
@@ -812,7 +1600,7 @@ function showLoginScreen() {
   // Only show login screen if we're not in student check-in mode
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
-  
+
   if (!sessionId) {
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('teacherDashboard').style.display = 'none';
@@ -829,7 +1617,7 @@ function showDashboard() {
   // Only show dashboard if we're not in student check-in mode
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
-  
+
   if (!sessionId) {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('teacherDashboard').style.display = 'block';
@@ -839,7 +1627,7 @@ function showDashboard() {
     document.body.classList.remove('modal-open');
     document.body.classList.remove('login-view', 'student-checkin-page');
     document.body.classList.add('dashboard-view');
-    
+
     // Reset the URL to remove any session parameters
     if (window.history.replaceState) {
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -853,34 +1641,34 @@ function handlePageDisplay(user) {
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
   const view = urlParams.get('view');
-  
+
   // If we're on a student check-in page, show it regardless of auth state
   if (sessionId) {
-    
+
     showStudentCheckin(sessionId);
     return;
   }
   // If student details view is requested (only open if already in modal-open state)
   if (view === 'student') {
     if (document.body.classList.contains('modal-open')) {
-      
+
       document.getElementById('studentDetailsModal').style.display = 'flex';
       // Load student details
-      loadStudentDetailsPage().catch(() => {});
+      loadStudentDetailsPage().catch(() => { });
     } else {
       // Do not auto-open modal on refresh; go to dashboard instead
-      
+
       showDashboard();
     }
     return;
   }
-  
+
   // Otherwise handle normal auth flow
   if (user) {
-    
+
     showDashboard();
   } else {
-    
+
     showLoginScreen();
   }
 }
@@ -890,10 +1678,10 @@ function handleGuestLogin() {
   // Set guest mode flag
   localStorage.setItem('guestMode', 'true');
   localStorage.setItem('userType', 'student');
-  
+
   // Show guest dashboard
   showGuestDashboard();
-  
+
   // Load previous sessions
   loadPreviousSessions();
 }
@@ -903,10 +1691,10 @@ function showGuestDashboard() {
   document.getElementById('teacherDashboard').style.display = 'none';
   document.getElementById('studentGuestDashboard').style.display = 'block';
   document.getElementById('studentCheckin').style.display = 'none';
-  
+
   document.body.classList.remove('login-view', 'student-checkin-page', 'dashboard-view');
   document.body.classList.add('guest-dashboard-view');
-  
+
   // Initialize guest dashboard event listeners
   initializeGuestDashboard();
 }
@@ -917,35 +1705,35 @@ function initializeGuestDashboard() {
   if (searchInput) {
     searchInput.addEventListener('input', filterGuestTable);
   }
-  
+
   // Print functionality
   const printBtn = document.getElementById('guestPrintBtn');
   if (printBtn) {
     printBtn.addEventListener('click', printGuestView);
   }
-  
+
   // Export functionality
   const exportBtn = document.getElementById('guestExportBtn');
   if (exportBtn) {
     exportBtn.addEventListener('click', exportGuestToExcel);
   }
-  
+
   // Initialize guest table sorting
   initializeGuestTableSorting();
-  
+
   // Initialize guest student details modal
   initializeGuestStudentDetails();
-  
+
   // Add debugging function to window for console access
-  window.debugAttendanceSessions = async function(date = null) {
+  window.debugAttendanceSessions = async function (date = null) {
     try {
       if (!db || !firebaseInitialized) {
         console.log('Database not available');
         return;
       }
-      
+
       let queryDate = date;
-      
+
       // If date is provided in YYYY-MM-DD format, convert it to DD/MM/YYYY
       if (date && date.includes('-')) {
         const parts = date.split('-');
@@ -954,15 +1742,15 @@ function initializeGuestDashboard() {
           console.log(`Converting date: ${date} -> ${queryDate}`);
         }
       }
-      
+
       let query = db.collection('attendanceSessions');
       if (queryDate) {
         query = query.where('date', '==', queryDate);
       }
-      
+
       const snapshot = await query.get();
       console.log(`Found ${snapshot.size} sessions${queryDate ? ` for date ${queryDate}` : ''}`);
-      
+
       snapshot.forEach(doc => {
         const data = doc.data();
         console.log('Session:', {
@@ -975,13 +1763,13 @@ function initializeGuestDashboard() {
           teacherName: data.teacherName
         });
       });
-      
+
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } catch (error) {
       console.error('Error debugging sessions:', error);
     }
   };
-  
+
   console.log('Guest dashboard initialized. Use debugAttendanceSessions("2025-09-01") in console to debug sessions.');
 }
 
@@ -998,7 +1786,7 @@ let guestStatusSortMode = null;
 function initializeGuestTableSorting() {
   const headers = {
     'guestHeaderRoll': 'roll',
-    'guestHeaderId': 'id', 
+    'guestHeaderId': 'id',
     'guestHeaderName': 'name',
     'guestHeaderFather': 'father',
     'guestHeaderStatus': 'status',
@@ -1008,10 +1796,10 @@ function initializeGuestTableSorting() {
   Object.entries(headers).forEach(([headerId, columnKey]) => {
     const header = document.getElementById(headerId);
     if (!header) return;
-    
+
     header.dataset.originalText = header.textContent;
-    
-    header.addEventListener('click', function() {
+
+    header.addEventListener('click', function () {
       Object.keys(headers).forEach(id => {
         const h = document.getElementById(id);
         if (h) {
@@ -1044,7 +1832,7 @@ function initializeGuestTableSorting() {
           }
         }
         guestStatusSortMode = null;
-        
+
         const indicator = guestSortAsc ? ' ▲' : ' ▼';
         header.textContent = header.dataset.originalText + indicator;
       }
@@ -1056,7 +1844,7 @@ function initializeGuestTableSorting() {
       // Re-render the current guest table with sorting
       const dateInput = document.getElementById('guestDateSelect');
       const subjectSelect = document.getElementById('guestSubjectSelect');
-      
+
       if (dateInput && subjectSelect && dateInput.value && subjectSelect.value) {
         loadGuestAttendance();
       }
@@ -1071,7 +1859,7 @@ function sortGuestStudents(data, attendance, attendanceTime) {
     return data.sort((a, b) => {
       const aPresent = attendance[a.id] === true;
       const bPresent = attendance[b.id] === true;
-      
+
       if (guestStatusSortMode === 'presentFirst') {
         if (aPresent && !bPresent) return -1;
         if (!aPresent && bPresent) return 1;
@@ -1085,22 +1873,22 @@ function sortGuestStudents(data, attendance, attendanceTime) {
     return data.sort((a, b) => {
       const aTime = attendanceTime[a.id] || '';
       const bTime = attendanceTime[b.id] || '';
-      
+
       if (aTime === '' && bTime !== '') return guestSortAsc ? 1 : -1;
       if (bTime === '' && aTime !== '') return guestSortAsc ? -1 : 1;
       if (aTime === '' && bTime === '') return 0;
-      
+
       return guestSortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
     });
   } else if (guestSortColumn === 'roll') {
     return data.sort((a, b) => {
       const ra = getRollNumberById(a.id) || 0;
       const rb = getRollNumberById(b.id) || 0;
-      
+
       return guestSortAsc ? (ra - rb) : (rb - ra);
     });
   }
-  
+
   return data.sort(compareValues(guestSortColumn, guestSortAsc));
 }
 
@@ -1130,19 +1918,19 @@ function initializeGuestStudentDetails() {
   if (closeBtn) {
     closeBtn.addEventListener('click', closeGuestStudentDetails);
   }
-  
+
   // Close modal when clicking outside
   const modal = document.getElementById('studentDetailsModal');
   if (modal) {
-    modal.addEventListener('click', function(e) {
+    modal.addEventListener('click', function (e) {
       if (e.target === modal) {
         closeGuestStudentDetails();
       }
     });
   }
-  
+
   // ESC key to close modal
-  document.addEventListener('keydown', function(e) {
+  document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && document.getElementById('studentDetailsModal').style.display === 'flex') {
       closeGuestStudentDetails();
     }
@@ -1152,17 +1940,17 @@ function initializeGuestStudentDetails() {
 function openGuestStudentDetails(studentId) {
   const student = students.find(s => s.id === studentId);
   if (!student) return;
-  
+
   // Set student basic info
   document.getElementById('metaId').textContent = studentId;
   document.getElementById('studentDetailsName').textContent = student.name || `Student ${studentId}`;
   document.getElementById('metaFather').textContent = student.father || '-';
-  
+
   // Show modal
   const modal = document.getElementById('studentDetailsModal');
   modal.style.display = 'flex';
   document.body.classList.add('modal-open');
-  
+
   // Load detailed attendance data
   loadStudentDetailsForGuest(studentId);
 }
@@ -1179,33 +1967,33 @@ async function loadStudentDetailsForGuest(studentId) {
       document.getElementById('overall').textContent = 'Database unavailable';
       return;
     }
-    
+
     // Load all sessions
     const sessionsSnapshot = await db.collection('attendanceSessions').get();
     const allSessions = sessionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
+
     if (allSessions.length === 0) {
       document.getElementById('overall').textContent = '0%';
       document.getElementById('totalSessions').textContent = '0';
       document.getElementById('subjectList').innerHTML = '<div class="subject-item">No sessions found</div>';
       return;
     }
-    
+
     // Load attendance for this student across all sessions
     const attendanceDocs = await fetchAllAttendanceDocsForStudentWithFallback(studentId, allSessions);
-    
+
     // Calculate overall and per-subject attendance
     const sessionById = new Map(allSessions.map(s => [s.id, s]));
     const perSubject = new Map();
     let totalPresent = 0;
-    
+
     // Helper function to normalize subject names
     function normalizeSubjectName(subjectString) {
       if (!subjectString) return 'General';
       const cleanName = subjectString.replace(/^[A-Z]{2,4}\d{4}\s*-\s*/i, '').trim();
       return cleanName || subjectString;
     }
-    
+
     // Count attendance per subject
     for (const att of attendanceDocs) {
       const session = sessionById.get(att.sessionId || att._sessionId);
@@ -1216,7 +2004,7 @@ async function loadStudentDetailsForGuest(studentId) {
       perSubject.set(key, entry);
       totalPresent += 1;
     }
-    
+
     // Count total sessions per subject
     const subjectSessionCounts = new Map();
     for (const s of allSessions) {
@@ -1224,50 +2012,50 @@ async function loadStudentDetailsForGuest(studentId) {
       const normalizedSubj = normalizeSubjectName(rawSubj);
       subjectSessionCounts.set(normalizedSubj, (subjectSessionCounts.get(normalizedSubj) || 0) + 1);
     }
-    
+
     for (const [subject, total] of subjectSessionCounts.entries()) {
       const entry = perSubject.get(subject) || { total: 0, present: 0 };
       entry.total = total;
       perSubject.set(subject, entry);
     }
-    
+
     // Update UI
     const totalSessions = allSessions.length;
     const attendancePercent = totalSessions > 0 ? Math.round((totalPresent / totalSessions) * 100) : 0;
-    
+
     document.getElementById('overall').textContent = `${attendancePercent}%`;
     document.getElementById('totalSessions').textContent = totalSessions;
-    
+
     // Render subject list
     const subjectList = document.getElementById('subjectList');
     if (subjectList) {
       subjectList.innerHTML = '';
-      const subjectsSorted = Array.from(perSubject.entries()).sort((a,b) => String(a[0]).localeCompare(String(b[0])));
-      
+      const subjectsSorted = Array.from(perSubject.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+
       for (const [subject, agg] of subjectsSorted) {
         const div = document.createElement('div');
         div.className = 'subject-item';
-        
+
         const left = document.createElement('div');
         left.innerHTML = `<span class="subject-name">${subject}</span><br/><small>${agg.present}/${agg.total} present</small>`;
-        
+
         const right = document.createElement('div');
         const pill = document.createElement('span');
         const percentage = agg.total > 0 ? (agg.present / agg.total) : 0;
-        
+
         if (percentage >= 0.75) pill.className = 'pill green';
         else if (percentage >= 0.5) pill.className = 'pill orange';
         else pill.className = 'pill red';
-        
+
         pill.textContent = agg.total > 0 ? Math.round((agg.present / agg.total) * 100) + '%' : '0%';
         right.appendChild(pill);
-        
+
         div.appendChild(left);
         div.appendChild(right);
         subjectList.appendChild(div);
       }
     }
-    
+
   } catch (error) {
     console.error('Error loading student details:', error);
     document.getElementById('overall').textContent = 'Error loading data';
@@ -1278,18 +2066,18 @@ async function loadGuestAttendance() {
   const dateInput = document.getElementById('guestDateSelect');
   const subjectSelect = document.getElementById('guestSubjectSelect');
   const statusDiv = document.getElementById('guestSessionStatus');
-  
+
   const selectedDate = dateInput.value;
   const selectedSubject = subjectSelect.value;
-  
+
   console.log('=== GUEST ATTENDANCE LOAD START ===');
   console.log('User selected:', {
     date: selectedDate,
     subject: selectedSubject,
     subjectSelectElement: subjectSelect,
-    availableOptions: Array.from(subjectSelect.options).map(opt => ({value: opt.value, text: opt.text}))
+    availableOptions: Array.from(subjectSelect.options).map(opt => ({ value: opt.value, text: opt.text }))
   });
-  
+
   // Hide content if either date or subject is not selected
   if (!selectedDate || !selectedSubject) {
     console.log('Missing date or subject, hiding content');
@@ -1313,7 +2101,7 @@ async function loadGuestAttendance() {
     // Convert date from YYYY-MM-DD to DD/MM/YYYY format (as stored in Firebase)
     const dateParts = selectedDate.split('-'); // ["2025", "09", "01"]
     const firebaseDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`; // "01/09/2025"
-    
+
     console.log(`Converting date: ${selectedDate} -> ${firebaseDate}`);
 
     // Get the subject name from the subjectNames object
@@ -1323,7 +2111,7 @@ async function loadGuestAttendance() {
 
     // Try multiple query strategies to find the session
     let sessionsSnapshot = null;
-    
+
     // Strategy 1: Query by date and subjectCode
     console.log(`Trying query 1: date=${firebaseDate}, subjectCode=${selectedSubject}`);
     sessionsSnapshot = await db.collection('attendanceSessions')
@@ -1342,7 +2130,7 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subjectName', '==', subjectName)
         .get();
-        
+
       if (!sessionsSnapshot.empty) {
         console.log(`Strategy 2 found ${sessionsSnapshot.size} sessions`);
       }
@@ -1355,7 +2143,7 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subject', '==', selectedSubject)
         .get();
-        
+
       if (!sessionsSnapshot.empty) {
         console.log(`Strategy 3 found ${sessionsSnapshot.size} sessions`);
       }
@@ -1368,7 +2156,7 @@ async function loadGuestAttendance() {
         .where('date', '==', firebaseDate)
         .where('subject', '==', subjectName)
         .get();
-        
+
       if (!sessionsSnapshot.empty) {
         console.log(`Strategy 4 found ${sessionsSnapshot.size} sessions`);
       }
@@ -1380,7 +2168,7 @@ async function loadGuestAttendance() {
       sessionsSnapshot = await db.collection('attendanceSessions')
         .where('date', '==', firebaseDate)
         .get();
-      
+
       // Filter manually for subject matches
       if (!sessionsSnapshot.empty) {
         const matchingSessions = [];
@@ -1389,21 +2177,21 @@ async function loadGuestAttendance() {
           const docSubjectCode = data.subjectCode || '';
           const docSubjectName = data.subjectName || '';
           const docSubject = data.subject || '';
-          
+
           // Check if this session matches the selected subject
-          if (docSubjectCode === selectedSubject || 
-              docSubjectName === subjectName || 
-              docSubject === selectedSubject || 
-              docSubject === subjectName ||
-              docSubjectCode.toLowerCase() === selectedSubject.toLowerCase() ||
-              docSubjectName.toLowerCase() === subjectName.toLowerCase()) {
+          if (docSubjectCode === selectedSubject ||
+            docSubjectName === subjectName ||
+            docSubject === selectedSubject ||
+            docSubject === subjectName ||
+            docSubjectCode.toLowerCase() === selectedSubject.toLowerCase() ||
+            docSubjectName.toLowerCase() === subjectName.toLowerCase()) {
             matchingSessions.push(doc);
             console.log(`Found matching session: ${docSubjectCode || docSubjectName || docSubject} matches ${selectedSubject}`);
           } else {
             console.log(`Session ${docSubjectCode || docSubjectName || docSubject} does not match ${selectedSubject}`);
           }
         });
-        
+
         if (matchingSessions.length > 0) {
           // Create a mock snapshot with matching sessions
           sessionsSnapshot = {
@@ -1425,7 +2213,7 @@ async function loadGuestAttendance() {
     }
 
     console.log(`Found ${sessionsSnapshot.docs.length} total sessions for date ${firebaseDate}`);
-    
+
     // Log all found sessions for debugging
     sessionsSnapshot.docs.forEach((doc, index) => {
       const data = doc.data();
@@ -1444,17 +2232,17 @@ async function loadGuestAttendance() {
     const sessionDoc = sessionsSnapshot.docs[0];
     const sessionData = sessionDoc.data();
     const sessionId = sessionDoc.id;
-    
+
     console.log('Selected session for verification:', {
       id: sessionId,
       data: sessionData
     });
-    
+
     // Verify this session actually matches our selected subject
     const sessionSubjectCode = sessionData.subjectCode || '';
     const sessionSubjectName = sessionData.subjectName || '';
     const sessionSubject = sessionData.subject || '';
-    
+
     console.log('VERIFICATION - Checking session match:', {
       selectedSubject: selectedSubject,
       selectedSubjectName: subjectName,
@@ -1463,13 +2251,13 @@ async function loadGuestAttendance() {
       sessionSubject: sessionSubject,
       fullSessionData: sessionData
     });
-    
+
     // More strict validation - exact matches only, no case-insensitive fallbacks
-    const isCorrectSubject = sessionSubjectCode === selectedSubject || 
-                            sessionSubject === selectedSubject;
-    
+    const isCorrectSubject = sessionSubjectCode === selectedSubject ||
+      sessionSubject === selectedSubject;
+
     console.log('VERIFICATION - Match result:', isCorrectSubject);
-    
+
     if (!isCorrectSubject) {
       console.warn('VERIFICATION FAILED - Session does not match selected subject', {
         selected: selectedSubject,
@@ -1483,9 +2271,9 @@ async function loadGuestAttendance() {
       hideGuestContent();
       return;
     }
-    
+
     console.log('VERIFICATION SUCCESS - Session matches selected subject');
-    
+
     // Load attendance data for this session
     const attendanceSnapshot = await db.collection('attendanceSessions')
       .doc(sessionId)
@@ -1495,7 +2283,7 @@ async function loadGuestAttendance() {
     // Build attendance object
     const sessionAttendance = {};
     const sessionAttendanceTime = {};
-    
+
     attendanceSnapshot.forEach(doc => {
       const data = doc.data();
       sessionAttendance[doc.id] = true;
@@ -1518,13 +2306,13 @@ async function loadGuestAttendance() {
     const displaySubjectName = subjectNames[selectedSubject] || selectedSubject;
     const timeSlot = sessionData.timeSlot || 'Unknown Time';
     const teacherName = sessionData.teacherName || 'Unknown Teacher';
-    
+
     showGuestStatus(`Found session: ${displaySubjectName} - ${timeSlot} (Teacher: ${teacherName})`, 'success');
 
     // Render the guest table
     renderGuestTable(sessionAttendance, sessionAttendanceTime);
     updateGuestStats(sessionAttendance);
-    
+
     // Show the table sections
     document.getElementById('guestStatsSection').style.display = 'grid';
     document.getElementById('guestTableContainer').style.display = 'block';
@@ -1558,7 +2346,7 @@ async function debugGuestAttendanceData() {
   try {
     const allSessions = await db.collection('attendanceSessions').get();
     const sessionsByDate = {};
-    
+
     allSessions.forEach(doc => {
       const data = doc.data();
       const date = data.date;
@@ -1574,7 +2362,7 @@ async function debugGuestAttendanceData() {
         teacherName: data.teacherName
       });
     });
-    
+
     console.log('All sessions by date:', sessionsByDate);
     return sessionsByDate;
   } catch (error) {
@@ -1596,32 +2384,32 @@ function renderGuestTable(attendance, attendanceTime) {
   if (!tbody) return;
 
   let filteredStudents = applyGuestFilters();
-  
+
   // Apply sorting
   filteredStudents = sortGuestStudents(filteredStudents, attendance, attendanceTime);
-  
+
   tbody.innerHTML = '';
-  
+
   filteredStudents.forEach(student => {
     const row = document.createElement('tr');
     if (attendance[student.id]) row.classList.add('present');
-    
-    const td1 = document.createElement('td'); 
+
+    const td1 = document.createElement('td');
     td1.textContent = String(getRollNumberById(student.id));
-    
-    const td2 = document.createElement('td'); 
+
+    const td2 = document.createElement('td');
     td2.textContent = String(student.id);
-    
-    const td3 = document.createElement('td'); 
+
+    const td3 = document.createElement('td');
     const nameButton = document.createElement('button');
     nameButton.className = 'name-link';
     nameButton.textContent = String(student.name || '');
     nameButton.onclick = () => openGuestStudentDetails(student.id);
     td3.appendChild(nameButton);
-    
-    const td4 = document.createElement('td'); 
+
+    const td4 = document.createElement('td');
     td4.textContent = String(student.father || '');
-    
+
     const td5 = document.createElement('td');
     const statusSpan = document.createElement('span');
     if (attendance[student.id]) {
@@ -1632,36 +2420,36 @@ function renderGuestTable(attendance, attendanceTime) {
       statusSpan.textContent = 'Absent';
     }
     td5.appendChild(statusSpan);
-    
-    const td6 = document.createElement('td'); 
+
+    const td6 = document.createElement('td');
     td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
-    
+
     row.appendChild(td1);
     row.appendChild(td2);
     row.appendChild(td3);
     row.appendChild(td4);
     row.appendChild(td5);
     row.appendChild(td6);
-    
+
     tbody.appendChild(row);
   });
 }
 
 function applyGuestFilters() {
   if (!students || !Array.isArray(students)) return [];
-  
+
   const searchTerm = document.getElementById('guestSearch')?.value.toLowerCase() || '';
-  
+
   if (!searchTerm) return students;
-  
+
   return students.filter(student => {
     const name = (student.name || '').toLowerCase();
     const father = (student.father || '').toLowerCase();
     const id = (student.id || '').toString().toLowerCase();
-    
-    return name.includes(searchTerm) || 
-           father.includes(searchTerm) || 
-           id.includes(searchTerm);
+
+    return name.includes(searchTerm) ||
+      father.includes(searchTerm) ||
+      id.includes(searchTerm);
   });
 }
 
@@ -1669,7 +2457,7 @@ function filterGuestTable() {
   // Re-render table with current attendance data
   const dateInput = document.getElementById('guestDateSelect');
   const subjectSelect = document.getElementById('guestSubjectSelect');
-  
+
   if (dateInput && subjectSelect && dateInput.value && subjectSelect.value) {
     loadGuestAttendance();
   }
@@ -1701,7 +2489,7 @@ async function exportGuestToExcel() {
 
     const dateInput = document.getElementById('guestDateSelect');
     const subjectSelect = document.getElementById('guestSubjectSelect');
-    
+
     if (!dateInput.value || !subjectSelect.value) {
       alert('Please select both date and subject first.');
       return;
@@ -1766,10 +2554,10 @@ async function exportGuestToExcel() {
 
     // Generate and download
     const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
-    
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1810,16 +2598,16 @@ function showTab(tabName) {
   const setupSection = document.getElementById('setupSection');
   const resourcesSection = document.getElementById('resourcesSection');
   const miscellaneousSection = document.getElementById('miscellaneousSection');
-  
+
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#teacherDashboard .tab-btn');
   tabButtons.forEach(btn => btn.classList.remove('active'));
-  
+
   if (tabName === 'attendance') {
     // Hide all other sections
     if (resourcesSection) resourcesSection.style.display = 'none';
     if (miscellaneousSection) miscellaneousSection.style.display = 'none';
-    
+
     // Check if there's an active session
     if (sessionId && currentSession) {
       // Session is active - show attendance section, hide setup
@@ -1830,7 +2618,7 @@ function showTab(tabName) {
       if (attendanceSection) attendanceSection.style.display = 'none';
       if (setupSection) setupSection.style.display = 'block';
     }
-    
+
     // Activate attendance tab
     const attendanceTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'attendance\')"]');
     if (attendanceTab) attendanceTab.classList.add('active');
@@ -1840,7 +2628,7 @@ function showTab(tabName) {
     if (setupSection) setupSection.style.display = 'none';
     if (miscellaneousSection) miscellaneousSection.style.display = 'none';
     if (resourcesSection) resourcesSection.style.display = 'block';
-    
+
     // Activate resources tab
     const resourcesTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'resources\')"]');
     if (resourcesTab) resourcesTab.classList.add('active');
@@ -1850,7 +2638,7 @@ function showTab(tabName) {
     if (setupSection) setupSection.style.display = 'none';
     if (resourcesSection) resourcesSection.style.display = 'none';
     if (miscellaneousSection) miscellaneousSection.style.display = 'block';
-    
+
     // Activate miscellaneous tab
     const miscTab = document.querySelector('#teacherDashboard .tab-btn[onclick="showTab(\'miscellaneous\')"]');
     if (miscTab) miscTab.classList.add('active');
@@ -1862,16 +2650,16 @@ function showGuestTab(tabName) {
   const attendanceTab = document.getElementById('guestAttendanceTab');
   const resourcesTab = document.getElementById('guestResourcesTab');
   const miscellaneousTab = document.getElementById('guestMiscellaneousTab');
-  
+
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#studentGuestDashboard .tab-btn');
   tabButtons.forEach(btn => btn.classList.remove('active'));
-  
+
   if (tabName === 'attendance') {
     if (attendanceTab) attendanceTab.style.display = 'block';
     if (resourcesTab) resourcesTab.style.display = 'none';
     if (miscellaneousTab) miscellaneousTab.style.display = 'none';
-    
+
     // Activate attendance tab
     const attendanceTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'attendance\')"]');
     if (attendanceTabBtn) attendanceTabBtn.classList.add('active');
@@ -1879,7 +2667,7 @@ function showGuestTab(tabName) {
     if (attendanceTab) attendanceTab.style.display = 'none';
     if (resourcesTab) resourcesTab.style.display = 'block';
     if (miscellaneousTab) miscellaneousTab.style.display = 'none';
-    
+
     // Activate resources tab
     const resourcesTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'resources\')"]');
     if (resourcesTabBtn) resourcesTabBtn.classList.add('active');
@@ -1887,7 +2675,7 @@ function showGuestTab(tabName) {
     if (attendanceTab) attendanceTab.style.display = 'none';
     if (resourcesTab) resourcesTab.style.display = 'none';
     if (miscellaneousTab) miscellaneousTab.style.display = 'block';
-    
+
     // Activate miscellaneous tab
     const miscTabBtn = document.querySelector('#studentGuestDashboard .tab-btn[onclick="showGuestTab(\'miscellaneous\')"]');
     if (miscTabBtn) miscTabBtn.classList.add('active');
@@ -1900,17 +2688,17 @@ let currentResourceType = 'notes';
 
 function showResourceTab(resourceType) {
   currentResourceType = resourceType;
-  
+
   // Hide all resource tab content
   const notesTab = document.getElementById('notesTab');
   const pyqsTab = document.getElementById('pyqsTab');
   const videosTab = document.getElementById('videosTab');
   const booksTab = document.getElementById('booksTab');
-  
+
   // Update tab buttons
   const tabButtons = document.querySelectorAll('.resource-tab-btn');
   tabButtons.forEach(btn => btn.classList.remove('active'));
-  
+
   if (resourceType === 'notes') {
     if (notesTab) notesTab.style.display = 'block';
     if (pyqsTab) pyqsTab.style.display = 'none';
@@ -1932,11 +2720,11 @@ function showResourceTab(resourceType) {
     if (videosTab) videosTab.style.display = 'none';
     if (booksTab) booksTab.style.display = 'block';
   }
-  
+
   // Activate the clicked tab
   const activeTab = document.querySelector(`#resourcesSection .resource-tab-btn[onclick="showResourceTab('${resourceType}')"]`);
   if (activeTab) activeTab.classList.add('active');
-  
+
   // Reload resources for current subject and type
   if (currentResourceSubject) {
     loadResourcesForType(currentResourceSubject, resourceType);
@@ -1949,11 +2737,11 @@ function showGuestResourceTab(resourceType) {
   const pyqsTab = document.getElementById('guestPyqsTab');
   const videosTab = document.getElementById('guestVideosTab');
   const booksTab = document.getElementById('guestBooksTab');
-  
+
   // Update tab buttons
   const tabButtons = document.querySelectorAll('#guestResourcesTab .resource-tab-btn');
   tabButtons.forEach(btn => btn.classList.remove('active'));
-  
+
   if (resourceType === 'notes') {
     if (notesTab) notesTab.style.display = 'block';
     if (pyqsTab) pyqsTab.style.display = 'none';
@@ -1975,11 +2763,11 @@ function showGuestResourceTab(resourceType) {
     if (videosTab) videosTab.style.display = 'none';
     if (booksTab) booksTab.style.display = 'block';
   }
-  
+
   // Activate the clicked tab
   const activeTab = document.querySelector(`#guestResourcesTab .resource-tab-btn[onclick="showGuestResourceTab('${resourceType}')"]`);
   if (activeTab) activeTab.classList.add('active');
-  
+
   // Reload guest resources for current subject and type
   const guestSubjectSelect = document.getElementById('guestResourceSubjectSelect');
   if (guestSubjectSelect && guestSubjectSelect.value) {
@@ -1990,16 +2778,16 @@ function showGuestResourceTab(resourceType) {
 async function loadSubjectResources() {
   const subjectSelect = document.getElementById('resourceSubjectSelect');
   const resourcesContent = document.getElementById('resourcesContent');
-  
+
   if (!subjectSelect.value) {
     resourcesContent.style.display = 'none';
     currentResourceSubject = null;
     return;
   }
-  
+
   currentResourceSubject = subjectSelect.value;
   resourcesContent.style.display = 'block';
-  
+
   // Load resources for current type
   await loadResourcesForType(currentResourceSubject, currentResourceType);
 }
@@ -2007,14 +2795,14 @@ async function loadSubjectResources() {
 async function loadGuestSubjectResources() {
   const subjectSelect = document.getElementById('guestResourceSubjectSelect');
   const resourcesContent = document.getElementById('guestResourcesContent');
-  
+
   if (!subjectSelect.value) {
     resourcesContent.style.display = 'none';
     return;
   }
-  
+
   resourcesContent.style.display = 'block';
-  
+
   // Load guest resources for all types
   await loadGuestResourcesForType(subjectSelect.value, 'notes');
   await loadGuestResourcesForType(subjectSelect.value, 'pyqs');
@@ -2027,18 +2815,18 @@ async function loadResourcesForType(subjectCode, resourceType) {
       console.log('Database not available');
       return;
     }
-    
+
     const snapshot = await db.collection('subjectResources')
       .doc(subjectCode)
       .collection(resourceType)
       .orderBy('createdAt', 'desc')
       .get();
-    
+
     const resources = [];
     snapshot.forEach(doc => {
       resources.push({ id: doc.id, ...doc.data() });
     });
-    
+
     renderResourcesList(resources, resourceType);
   } catch (error) {
     console.error('Error loading resources:', error);
@@ -2052,18 +2840,18 @@ async function loadGuestResourcesForType(subjectCode, resourceType) {
       console.log('Database not available');
       return;
     }
-    
+
     const snapshot = await db.collection('subjectResources')
       .doc(subjectCode)
       .collection(resourceType)
       .orderBy('createdAt', 'desc')
       .get();
-    
+
     const resources = [];
     snapshot.forEach(doc => {
       resources.push({ id: doc.id, ...doc.data() });
     });
-    
+
     renderGuestResourcesList(resources, resourceType);
   } catch (error) {
     console.error('Error loading guest resources:', error);
@@ -2075,7 +2863,7 @@ function renderResourcesList(resources, resourceType) {
   const listId = resourceType + 'List';
   const listElement = document.getElementById(listId);
   if (!listElement) return;
-  
+
   if (resources.length === 0) {
     listElement.innerHTML = `
       <div class="empty-state">
@@ -2086,7 +2874,7 @@ function renderResourcesList(resources, resourceType) {
     `;
     return;
   }
-  
+
   if (resourceType === 'books') {
     // Special rendering for books
     listElement.innerHTML = resources.map(resource => `
@@ -2137,7 +2925,7 @@ function renderGuestResourcesList(resources, resourceType) {
   const listId = 'guest' + resourceType.charAt(0).toUpperCase() + resourceType.slice(1) + 'List';
   const listElement = document.getElementById(listId);
   if (!listElement) return;
-  
+
   if (resources.length === 0) {
     listElement.innerHTML = `
       <div class="empty-state">
@@ -2148,7 +2936,7 @@ function renderGuestResourcesList(resources, resourceType) {
     `;
     return;
   }
-  
+
   if (resourceType === 'books') {
     // Special rendering for guest books
     listElement.innerHTML = resources.map(resource => `
@@ -2195,9 +2983,9 @@ async function addResource(resourceType) {
       alert('Please select a subject first');
       return;
     }
-    
+
     let title, url, description, year, type, author;
-    
+
     if (resourceType === 'notes') {
       title = document.getElementById('noteTitle').value.trim();
       author = document.getElementById('noteAuthor').value.trim();
@@ -2216,14 +3004,14 @@ async function addResource(resourceType) {
       author = document.getElementById('bookAuthor').value.trim();
       url = document.getElementById('bookUrl').value.trim();
     }
-    
+
     // Validation
     if (resourceType === 'books') {
       if (!title || !author || !url) {
         alert('Please fill in all required fields (Title, Author, and URL)');
         return;
       }
-      
+
       if (!isValidUrl(url)) {
         alert('Please enter a valid URL');
         return;
@@ -2233,20 +3021,20 @@ async function addResource(resourceType) {
         alert('Please fill in the title and URL fields');
         return;
       }
-      
+
       if (!isValidUrl(url)) {
         alert('Please enter a valid URL');
         return;
       }
     }
-    
+
     const resourceData = {
       title,
       subjectCode: currentResourceSubject,
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     // Add type-specific fields
     if (resourceType === 'books') {
       resourceData.author = author;
@@ -2260,12 +3048,12 @@ async function addResource(resourceType) {
       if (year) resourceData.year = year;
       if (type) resourceData.type = type;
     }
-    
+
     await db.collection('subjectResources')
       .doc(currentResourceSubject)
       .collection(resourceType)
       .add(resourceData);
-    
+
     // Clear form fields
     if (resourceType === 'notes') {
       document.getElementById('noteTitle').value = '';
@@ -2285,10 +3073,10 @@ async function addResource(resourceType) {
       document.getElementById('bookAuthor').value = '';
       document.getElementById('bookUrl').value = '';
     }
-    
+
     // Reload resources
     await loadResourcesForType(currentResourceSubject, resourceType);
-    
+
     showNotification(`${getResourceTypeName(resourceType)} added successfully!`, 'success');
   } catch (error) {
     console.error('Error adding resource:', error);
@@ -2300,17 +3088,17 @@ async function deleteResource(resourceId, subjectCode, resourceType) {
   if (!confirm(`Are you sure you want to delete this ${getResourceTypeName(resourceType).toLowerCase()}?`)) {
     return;
   }
-  
+
   try {
     await db.collection('subjectResources')
       .doc(subjectCode)
       .collection(resourceType)
       .doc(resourceId)
       .delete();
-    
+
     // Reload resources
     await loadResourcesForType(subjectCode, resourceType);
-    
+
     showNotification(`${getResourceTypeName(resourceType)} deleted successfully!`, 'success');
   } catch (error) {
     console.error('Error deleting resource:', error);
@@ -2348,7 +3136,7 @@ function escapeHtml(text) {
 
 function formatDate(timestamp) {
   if (!timestamp) return 'Unknown';
-  
+
   let date;
   if (timestamp.toDate) {
     // Firestore timestamp
@@ -2358,7 +3146,7 @@ function formatDate(timestamp) {
   } else {
     date = new Date(timestamp);
   }
-  
+
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -2407,32 +3195,32 @@ function editDocument(documentType) {
     'syllabus': 'Syllabus',
     'calendar': 'Academic Calendar'
   };
-  
+
   const documentName = documentNames[documentType] || 'Document';
-  
+
   // Show confirmation dialog
   const confirmed = confirm(`Do you want to edit the ${documentName}?\n\nThis will allow you to upload a new ${documentName.toLowerCase()} file.`);
-  
+
   if (confirmed) {
     // Create file input dynamically
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.style.display = 'none';
-    
+
     // Set accepted file types based on document type
     if (documentType === 'timetable') {
       fileInput.accept = '.png,.jpg,.jpeg,.gif,.bmp,.svg';
     } else {
       fileInput.accept = '.pdf';
     }
-    
-    fileInput.onchange = function(event) {
+
+    fileInput.onchange = function (event) {
       const file = event.target.files[0];
       if (file) {
         handleDocumentUpload(file, documentType);
       }
     };
-    
+
     // Trigger file selection
     document.body.appendChild(fileInput);
     fileInput.click();
@@ -2444,12 +3232,12 @@ function handleDocumentUpload(file, documentType) {
   // This function would handle the actual file upload
   // For now, we'll show a placeholder message
   showNotification(`${file.name} selected for ${documentType}. Upload functionality would be implemented here.`, 'info');
-  
+
   // In a real implementation, you would:
   // 1. Upload the file to your server or cloud storage
   // 2. Update the document references in the HTML
   // 3. Refresh the page or update the document display
-  
+
   console.log(`File selected: ${file.name} for ${documentType}`);
 }
 
@@ -2501,7 +3289,7 @@ async function fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions)
     return await fetchAllAttendanceDocsForStudent(studentId);
   } catch (e) {
     if (e && (e.code === 'failed-precondition' || String(e.message || '').includes('COLLECTION_GROUP'))) {
-      
+
       const results = [];
       const chunkSize = 10;
       for (let i = 0; i < sessions.length; i += chunkSize) {
@@ -2520,7 +3308,7 @@ async function fetchAllAttendanceDocsForStudentWithFallback(studentId, sessions)
               return { id: d.id, ...d.data(), _path: d.ref.path };
             }
           } catch (err) {
-            
+
           }
           return null;
         });
@@ -2548,28 +3336,28 @@ async function loadStudentDetailsPage() {
       await new Promise(resolve => {
         let settled = false;
         if (auth) {
-          auth.onAuthStateChanged(async () => { 
-            if (!settled) { 
+          auth.onAuthStateChanged(async () => {
+            if (!settled) {
               settled = true;
               // Load students if not already loaded
               if (students.length === 0) {
                 await loadStudentsFromFirestore();
               }
-              resolve(); 
-            } 
+              resolve();
+            }
           });
-          setTimeout(() => { 
-            if (!settled) { 
-              settled = true; 
-              resolve(); 
-            } 
+          setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
           }, 1500);
-        } else { 
-          resolve(); 
+        } else {
+          resolve();
         }
       });
     } catch (e) {
-      
+
     }
 
     const sessions = await fetchAllSessionsForDetails();
@@ -2589,10 +3377,10 @@ async function loadStudentDetailsPage() {
     // Helper function to normalize subject names and remove duplicates
     function normalizeSubjectName(subjectString) {
       if (!subjectString) return 'General';
-      
+
       // Remove course codes like "CEL1020 - ", "MTL1001 - ", "PHL1083 - ", etc.
       const cleanName = subjectString.replace(/^[A-Z]{2,4}\d{4}\s*-\s*/i, '').trim();
-      
+
       // Return the cleaned name or original if no course code was found
       return cleanName || subjectString;
     }
@@ -2624,10 +3412,10 @@ async function loadStudentDetailsPage() {
     }
 
     // Debug log student data
-    
-    
-    
-    
+
+
+
+
     // If missing from attendance docs, try students cache with different ID formats
     if (!studentName || !fatherName) {
       // Try different ID formats to handle potential type mismatches
@@ -2638,15 +3426,15 @@ async function loadStudentDetailsPage() {
         studentId.trim(), // trimmed string
         studentId.padStart(2, '0') // handle leading zeros if any
       ];
-      
+
       let foundStudent = null;
-      
+
       if (Array.isArray(students)) {
         // Try each ID format until we find a match
         for (const idFormat of possibleIdFormats) {
-          foundStudent = students.find(x => 
+          foundStudent = students.find(x =>
             x && (
-              x.id === idFormat || 
+              x.id === idFormat ||
               String(x.id) === String(idFormat) ||
               Number(x.id) === Number(idFormat)
             )
@@ -2654,26 +3442,26 @@ async function loadStudentDetailsPage() {
           if (foundStudent) break;
         }
       }
-      
-      
+
+
       if (foundStudent) {
         if (!studentName && foundStudent.name) {
           studentName = foundStudent.name;
-          
+
         }
         if (!fatherName && foundStudent.father) {
           fatherName = foundStudent.father;
-          
+
         }
       } else {
-        
+
       }
     }
 
     // Fallback to student ID if name not found
-    
+
     const displayName = studentName || `Student ${studentId}`;
-    
+
     // Update the student name in the UI
     setText('studentDetailsName', displayName);
     // Don't change page title for modal view
@@ -2684,7 +3472,7 @@ async function loadStudentDetailsPage() {
     const list = document.getElementById('subjectList');
     if (list) {
       list.innerHTML = '';
-      const subjectsSorted = Array.from(perSubject.entries()).sort((a,b) => String(a[0]).localeCompare(String(b[0])));
+      const subjectsSorted = Array.from(perSubject.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
       for (const [subject, agg] of subjectsSorted) {
         const div = document.createElement('div');
         div.className = 'subject-item';
@@ -2701,7 +3489,7 @@ async function loadStudentDetailsPage() {
       }
     }
   } catch (e) {
-    
+
     showErrorInline('Failed to load student attendance. See console for details.');
   }
 }
@@ -2715,7 +3503,7 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371000; // Earth's radius in meters
   const dLat = toRadians(lat2 - lat1);
   const dLng = toRadians(lng2 - lng1);
-  const a = 
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
@@ -2752,11 +3540,11 @@ function calculateAveragePosition(positions) {
 function showLocationStatus(message, status, isLoading = false) {
   const statusElement = document.getElementById('locationStatus');
   if (!statusElement) return;
-  
+
   // Clear previous content and classes
   statusElement.className = `location-status ${status} show`;
   statusElement.innerHTML = '';
-  
+
   // Add icon based on status
   let icon = '';
   if (isLoading) {
@@ -2766,20 +3554,81 @@ function showLocationStatus(message, status, isLoading = false) {
   } else if (status === 'denied') {
     icon = '<i class="fas fa-exclamation-circle"></i>';
   }
-  
+
   // Add message
   const messageElement = document.createElement('span');
   messageElement.textContent = message;
-  
+
   // Build the status element
   statusElement.innerHTML = icon;
   statusElement.appendChild(messageElement);
-  
+
+  // Add enhanced status information during checking
+  if (typeof locationManager !== 'undefined' && (status === 'checking' || isLoading)) {
+    const queueStatus = locationManager.queue.getQueueStatus();
+    const metrics = locationManager.getPerformanceMetrics();
+
+    // Show queue information if there are pending requests
+    if (queueStatus.total > 0) {
+      const queueInfo = document.createElement('div');
+      queueInfo.className = 'queue-info';
+      queueInfo.style.cssText = 'font-size: 0.85em; color: #666; margin-top: 5px;';
+      queueInfo.innerHTML = `📊 Queue: ${queueStatus.total} waiting, ${queueStatus.active} processing`;
+      statusElement.appendChild(queueInfo);
+    }
+
+    // Show performance metrics if system has processed requests
+    if (metrics.totalRequests > 0) {
+      const perfInfo = document.createElement('div');
+      perfInfo.className = 'performance-info';
+      perfInfo.style.cssText = 'font-size: 0.85em; color: #666; margin-top: 3px;';
+
+      let perfText = `⚡ ${metrics.successRate}% success rate`;
+      if (metrics.averageResponseTime > 0) {
+        perfText += `, ${metrics.averageResponseTime}ms avg`;
+      }
+      if (parseFloat(metrics.cacheHitRate) > 0) {
+        perfText += `, ${metrics.cacheHitRate}% cached`;
+      }
+
+      perfInfo.textContent = perfText;
+      statusElement.appendChild(perfInfo);
+    }
+
+    // Show estimated wait time for high queue loads
+    if (queueStatus.total > 5) {
+      const estimatedWait = Math.ceil(queueStatus.total * (metrics.averageResponseTime || 2000) / 1000);
+      const waitInfo = document.createElement('div');
+      waitInfo.className = 'wait-info';
+      waitInfo.style.cssText = 'font-size: 0.85em; color: #ff9800; margin-top: 3px; font-weight: 500;';
+      waitInfo.innerHTML = `⏱️ Estimated wait: ~${estimatedWait}s (high traffic)`;
+      statusElement.appendChild(waitInfo);
+    }
+  }
+
   // Add pulse effect for loading state
   if (isLoading) {
     statusElement.classList.add('pulse');
   } else {
     statusElement.classList.remove('pulse');
+  }
+
+  // Auto-hide success messages after 8 seconds (increased for better UX)
+  if (status === 'allowed') {
+    setTimeout(() => {
+      if (statusElement.className.includes('allowed')) {
+        statusElement.style.display = 'none';
+      }
+    }, 8000);
+  }
+
+  // Auto-hide error messages after 15 seconds
+  if (status === 'denied') {
+    setTimeout(() => {
+      if (statusElement.className.includes('denied')) {
+        statusElement.style.display = 'none';
+      }
+    }, 15000);
   }
 }
 
@@ -2787,38 +3636,38 @@ function showLocationStatus(message, status, isLoading = false) {
 async function checkUserLocation(retryCount = 0) {
   // Increment traffic counter
   totalLocationRequests++;
-  
+
   // Check connection quality and adjust strategy
   const quality = updateConnectionQuality();
-  
+
   try {
     console.log(`Starting location verification (connection: ${quality}, request #${totalLocationRequests})...`);
-    
+
     // For poor connections or high retry count, skip Google and go straight to fallback
     if (quality === 'poor' || retryCount >= 2) {
       console.log('Using fallback method due to connection quality or retry count');
       fallbackRequests++;
       return await checkUserLocationFallback(retryCount);
     }
-    
+
     // Try Google with timeout based on connection quality
     const timeout = quality === 'slow' ? 6000 : 10000;
     const result = await Promise.race([
       checkUserLocationWithGoogle(retryCount),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Google verification timeout')), timeout)
       )
     ]);
-    
+
     // Count successful Google requests
     if (result.method && result.method.includes('google')) {
       successfulGoogleRequests++;
     } else {
       fallbackRequests++;
     }
-    
+
     return result;
-    
+
   } catch (error) {
     console.error('Google location verification failed:', error.message);
     fallbackRequests++;
@@ -2828,15 +3677,15 @@ async function checkUserLocation(retryCount = 0) {
 
 async function checkUserLocationFallback(retryCount = 0) {
   const maxRetries = 2; // Reduced retries for faster experience during high traffic
-  
+
   if (!navigator.geolocation) {
     showLocationStatus('❌ Location services not supported by your browser', 'denied');
     return { success: false, error: 'Geolocation not supported' };
   }
-  
+
   // Show loading state
   showLocationStatus('📍 Getting your location (fast mode)...', 'checking', true);
-  
+
   return new Promise((resolve) => {
     // Optimized options for high-traffic scenarios
     const options = {
@@ -2844,18 +3693,18 @@ async function checkUserLocationFallback(retryCount = 0) {
       timeout: 6000, // Reduced timeout for quicker response during traffic
       maximumAge: 30000 // Allow 30-second cached position to reduce server load
     };
-    
+
     const handleSuccess = (position) => {
       try {
         const { latitude, longitude, accuracy } = position.coords;
-        
+
         console.log(`Fallback location: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
-        
+
         // More lenient accuracy check during high traffic
         if (accuracy > 300 && retryCount === 0) {
           console.warn(`Moderate accuracy (${accuracy}m), proceeding due to high traffic load`);
         }
-        
+
         // Check for invalid coordinates
         if (latitude === 0 && longitude === 0) {
           console.warn('Device returning 0,0 coordinates');
@@ -2871,13 +3720,13 @@ async function checkUserLocationFallback(retryCount = 0) {
             return;
           }
         }
-        
+
         // Calculate distance using efficient method
         const distance = calculateDistance(latitude, longitude, UNIVERSITY_LAT, UNIVERSITY_LNG);
         const distanceRounded = Math.round(distance);
-        
+
         console.log(`Distance from GNDU: ${distanceRounded}m (limit: ${ALLOWED_RADIUS_METERS}m)`);
-        
+
         // Validate distance calculation
         if (isNaN(distance) || !isFinite(distance) || distance < 0) {
           console.error('Invalid distance calculation:', distance);
@@ -2893,9 +3742,9 @@ async function checkUserLocationFallback(retryCount = 0) {
             return;
           }
         }
-        
+
         console.log(`Distance from GNDU: ${distanceRounded}m (within ${ALLOWED_RADIUS_METERS}m allowed)`);
-        
+
         if (distance <= ALLOWED_RADIUS_METERS) {
           const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU`;
           showLocationStatus(successMsg, 'allowed');
@@ -2904,13 +3753,13 @@ async function checkUserLocationFallback(retryCount = 0) {
           // Show more helpful message based on distance
           let statusMsg;
           if (distance > 50000) { // More than 50km
-            statusMsg = `❌ You're ${Math.round(distance/1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+            statusMsg = `❌ You're ${Math.round(distance / 1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
           } else if (distance > 1000) { // More than 1km
-            statusMsg = `❌ You're ${(distance/1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
+            statusMsg = `❌ You're ${(distance / 1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
           } else {
             statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
           }
-          
+
           showLocationStatus(statusMsg, 'denied');
           resolve({ success: false, distance: distanceRounded });
         }
@@ -2920,12 +3769,12 @@ async function checkUserLocationFallback(retryCount = 0) {
         resolve({ success: false, error: error.message });
       }
     };
-    
+
     const handleError = (error) => {
       console.error('Geolocation error:', error);
       let message = '❌ Error: ';
-      
-      switch(error.code) {
+
+      switch (error.code) {
         case error.PERMISSION_DENIED:
           message += 'Location permission denied. Please enable location access in your browser settings.';
           break;
@@ -2938,7 +3787,7 @@ async function checkUserLocationFallback(retryCount = 0) {
         default:
           message += 'Could not get your location.';
       }
-      
+
       if (retryCount < maxRetries) {
         message += ` Retrying... (${retryCount + 1}/${maxRetries})`;
         showLocationStatus(message, 'checking');
@@ -2954,9 +3803,9 @@ async function checkUserLocationFallback(retryCount = 0) {
         }, 1500); // Slightly longer delay between retries
         return;
       }
-      
+
       // Final error message after all retries
-      switch(error.code) {
+      switch (error.code) {
         case error.PERMISSION_DENIED:
           message = 'Location permission denied. Please enable it to continue.';
           break;
@@ -2969,35 +3818,35 @@ async function checkUserLocationFallback(retryCount = 0) {
         default:
           message = 'An unknown error occurred while getting your location.';
       }
-      
+
       showLocationStatus(message, 'denied');
       resolve({ success: false, error: error.code || 'UNKNOWN_ERROR' });
     };
-    
+
     // Check permissions first if supported
     if (navigator.permissions) {
-      navigator.permissions.query({name: 'geolocation'})
+      navigator.permissions.query({ name: 'geolocation' })
         .then(permissionStatus => {
-          
-          
+
+
           if (permissionStatus.state === 'denied') {
             handleError({ code: 'PERMISSION_DENIED' });
             return;
           }
-          
+
           // If permission is granted or prompt, proceed with getting location
           navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
-          
+
           // Listen for permission changes
           permissionStatus.onchange = () => {
-            
+
             if (permissionStatus.state === 'granted') {
               navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
             }
           };
         })
         .catch(error => {
-          
+
           // If permission query fails, try getting location anyway
           navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
         });
@@ -3014,16 +3863,16 @@ function requestLocationPermission() {
     updateLocationStatus('❌ Location services not supported by your browser', 'denied');
     return;
   }
-  
+
   updateLocationStatus('📍 Please allow location access in the browser prompt...', 'checking');
-  
+
   navigator.geolocation.getCurrentPosition(
     () => {
       // Success - reload the check
       window.location.reload();
     },
     (error) => {
-      
+
       updateLocationStatus('❌ Location access denied. Please enable it in your browser settings.', 'denied');
     },
     { enableHighAccuracy: true }
@@ -3034,13 +3883,13 @@ function requestLocationPermission() {
 function detectSystemTheme() {
   if (window.matchMedia) {
     const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     if (darkModeQuery.matches) {
       document.documentElement.setAttribute('data-theme', 'dark');
     } else {
       document.documentElement.setAttribute('data-theme', 'light');
     }
-    
+
     darkModeQuery.addEventListener('change', (e) => {
       if (e.matches) {
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -3060,7 +3909,7 @@ function showNotification(message, type = 'success') {
   notification.textContent = message;
   notification.className = `notification ${type}`;
   notification.classList.add('show');
-  
+
   setTimeout(() => {
     notification.classList.remove('show');
   }, 3000);
@@ -3091,10 +3940,10 @@ function setMessage(el, type, text) {
 
 function checkStudentsLoaded() {
   const loadingMsg = document.getElementById('loadingMessage');
-  
+
   if (Array.isArray(students) && students.length > 0) {
     if (loadingMsg) loadingMsg.style.display = 'none';
-    
+
     return true;
   } else {
     if (loadingMsg) {
@@ -3111,10 +3960,10 @@ function validateForm() {
   const subjectCode = document.getElementById('subjectCode').value;
   const secretCode = document.getElementById('secretCode').value.trim();
   const studentsLoaded = checkStudentsLoaded();
-  
+
   const startBtn = document.getElementById('startBtn');
   const isValid = date && subjectCode && secretCode && studentsLoaded;
-  
+
   startBtn.disabled = !isValid;
   return isValid;
 }
@@ -3162,7 +4011,7 @@ async function handleSessionPrefill() {
       validateForm();
     }
   } catch (e) {
-    
+
   }
 }
 
@@ -3180,7 +4029,7 @@ function generateSessionId() {
 function findTeacherAndTime(date, subjectCode) {
   const selectedDate = new Date(date);
   const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
-  
+
   const daySchedule = timetable[dayName];
   if (daySchedule) {
     for (const timeSlot in daySchedule) {
@@ -3192,7 +4041,7 @@ function findTeacherAndTime(date, subjectCode) {
       }
     }
   }
-  
+
   return {
     timeSlot: 'Not Scheduled',
     teacher: 'To Be Assigned'
@@ -3202,7 +4051,7 @@ function findTeacherAndTime(date, subjectCode) {
 // Helper function to safely format expiry time
 function formatExpiryTime(expiryTime) {
   if (!expiryTime) return 'N/A';
-  
+
   try {
     let date;
     if (expiryTime && typeof expiryTime.toDate === 'function') {
@@ -3218,53 +4067,53 @@ function formatExpiryTime(expiryTime) {
       // Direct Date object or other format
       date = new Date(expiryTime);
     }
-    
+
     if (isNaN(date.getTime())) {
       return 'Invalid Date';
     }
-    
+
     return date.toLocaleString();
   } catch (error) {
-    
+
     return 'Invalid Date';
   }
 }
 
 // Enhanced startAttendance with secret code
 // Test function to verify expiry - can be called from console: testExpiry()
-window.testExpiry = function() {
+window.testExpiry = function () {
   const testSession = {
     sessionId: 'TEST_123',
     date: new Date().toLocaleDateString('en-GB'),
     expiryTime: new Date(Date.now() - 1000).toISOString() // 1 second ago
   };
-  
+
   ('Testing expiry with expired session:', isSessionExpired(testSession));
-  
+
   const validSession = {
     sessionId: 'TEST_456',
     date: new Date().toLocaleDateString('en-GB'),
     expiryTime: new Date(Date.now() + 3600000).toISOString() // 1 hour from now
   };
-  
+
   ('Testing expiry with valid session:', isSessionExpired(validSession));
 };
 
 function isSessionExpired(sessionData) {
   // Handle null/undefined sessionData
   if (!sessionData) {
-    
+
     return true;
   }
-  
-  
-  
+
+
+
   // Check if session was manually expired via isExpired flag
   if (sessionData.isExpired === true) {
     ('❌ Session expired via isExpired flag (manual expiry)');
     return true;
   }
-  
+
   if (!sessionData.expiryTime) {
     // For very old sessions (created before expiry feature), consider them expired after 2 hours
     // This prevents indefinite access to old sessions
@@ -3280,42 +4129,42 @@ function isSessionExpired(sessionData) {
           if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() >= 2020) {
             sessionDate = parsedDate;
           } else {
-            
+
             sessionDate = new Date();
           }
         } else {
-          
+
           sessionDate = new Date();
         }
       } catch (e) {
-        
+
         sessionDate = new Date();
       }
     } else {
       sessionDate = new Date();
     }
-    
+
     // Only expire old sessions if they are actually old (created more than 2 hours ago)
     const maxAge = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
     const age = Date.now() - sessionDate.getTime();
     const isOld = age > maxAge;
-    ('📅 Old session check:', { 
+    ('📅 Old session check:', {
       age: Math.round(age / 1000 / 60), // minutes
       maxAge: Math.round(maxAge / 1000 / 60), // minutes
-      isOld, 
-      parsedDate: sessionDate.toISOString() 
+      isOld,
+      parsedDate: sessionDate.toISOString()
     });
     return isOld;
   }
-  
+
   const now = new Date();
-  
+
   // Handle missing or invalid expiryTime
   if (!sessionData.expiryTime || sessionData.expiryTime === 'Invalid Date') {
-    
+
     return true; // Treat invalid dates as expired
   }
-  
+
   try {
     // Handle Firestore Timestamp objects
     let expiryTime;
@@ -3332,24 +4181,24 @@ function isSessionExpired(sessionData) {
       // Direct Date object or other format
       expiryTime = new Date(sessionData.expiryTime);
     }
-    
+
     if (isNaN(expiryTime.getTime())) {
-      
+
       return true;
     }
-    
+
     // Add 5-minute buffer to prevent premature expiry due to clock differences
     const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
     const isExpired = now.getTime() > (expiryTime.getTime() + bufferTime);
-    ('⏰ Expiry check:', { 
-      now: now.toISOString(), 
-      expiryTime: expiryTime.toISOString(), 
+    ('⏰ Expiry check:', {
+      now: now.toISOString(),
+      expiryTime: expiryTime.toISOString(),
       isExpired,
       bufferMinutes: 5
     });
     return isExpired;
   } catch (error) {
-    
+
     return true;
   }
 }
@@ -3386,11 +4235,11 @@ async function expireSessionManually() {
     document.getElementById('sessionExpired').style.display = 'block';
     document.getElementById('expiryInfo').textContent = 'Session expired manually';
     document.getElementById('expiryInfo').style.color = '#e74c3c';
-    
+
     // Disable attendance marking
     document.getElementById('studentCheckinForm')?.style.setProperty('opacity', '0.5');
     document.getElementById('studentCheckinForm')?.style.setProperty('pointer-events', 'none');
-    
+
     // Change expire button to restart button
     const expireBtn = document.querySelector('.share-btn[onclick="expireSessionManually()"]');
     if (expireBtn) {
@@ -3398,11 +4247,11 @@ async function expireSessionManually() {
       expireBtn.style.backgroundColor = '#27ae60';
       expireBtn.setAttribute('onclick', 'restartSession()');
     }
-    
+
     showNotification('Session expired successfully', 'success');
-    
+
   } catch (error) {
-    
+
     alert('Error expiring session. Please try again.');
   }
 }
@@ -3416,37 +4265,37 @@ async function startAttendance() {
   const date = document.getElementById('attendanceDate').value;
   const subjectCode = document.getElementById('subjectCode').value;
   const secretCode = document.getElementById('secretCode').value.trim().toUpperCase();
-  
+
   const selectedDate = new Date(date);
   const dayName = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
   const formattedDate = selectedDate.toLocaleDateString('en-GB');
-  
+
   const existingSession = await findExistingSession(formattedDate, subjectCode);
-    
-    let isNewSession = false;
-    
-    if (existingSession && existingSession.id) {
-      // Check if existing session is expired
-      if (isSessionExpired(existingSession)) {
-        sessionId = existingSession.id;
-        currentSession = existingSession;
-        sessionSecretCode = existingSession.secretCode || secretCode;
-        
-        showNotification('📖 Viewing expired attendance session', 'info');
-        
-        await loadExistingAttendance(sessionId);
-      } else {
-        sessionId = existingSession.id;
-        currentSession = existingSession;
-        sessionSecretCode = existingSession.secretCode || secretCode;
-        
-        showNotification('📚 Continuing existing attendance session', 'success');
-        
-        await loadExistingAttendance(sessionId);
-      }
+
+  let isNewSession = false;
+
+  if (existingSession && existingSession.id) {
+    // Check if existing session is expired
+    if (isSessionExpired(existingSession)) {
+      sessionId = existingSession.id;
+      currentSession = existingSession;
+      sessionSecretCode = existingSession.secretCode || secretCode;
+
+      showNotification('📖 Viewing expired attendance session', 'info');
+
+      await loadExistingAttendance(sessionId);
     } else {
-      isNewSession = true;
+      sessionId = existingSession.id;
+      currentSession = existingSession;
+      sessionSecretCode = existingSession.secretCode || secretCode;
+
+      showNotification('📚 Continuing existing attendance session', 'success');
+
+      await loadExistingAttendance(sessionId);
     }
+  } else {
+    isNewSession = true;
+  }
 
   if (isNewSession) {
     const classDetails = findTeacherAndTime(date, subjectCode);
@@ -3471,9 +4320,9 @@ async function startAttendance() {
     };
 
     await createAttendanceSession(currentSession);
-    
+
     showNotification('✅ New attendance session started (expires in 1 hour)', 'success');
-    
+
     attendance = {};
     attendanceTime = {};
   }
@@ -3482,7 +4331,7 @@ async function startAttendance() {
 
   const isExpired = isSessionExpired(currentSession);
   const sessionStatus = isNewSession ? 'New' : (isExpired ? 'Viewing Expired' : 'Continuing');
-  
+
   document.getElementById('classInfo').innerHTML = `
     <h3>${sessionStatus} Attendance Session</h3>
     <div class="class-details">
@@ -3546,14 +4395,14 @@ async function restartSession() {
     };
 
     await createAttendanceSession(newSession);
-    
+
     // Update current session
     currentSession = newSession;
-    
+
     // Keep the same checkin URL since session ID hasn't changed
     checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
     document.getElementById('sessionUrl').textContent = checkinUrl;
-    
+
     document.getElementById('classInfo').innerHTML = `
       <h3>Restarted Attendance Session</h3>
       <div class="class-details">
@@ -3571,7 +4420,7 @@ async function restartSession() {
         <strong>⏰ Expires:</strong> ${expiryTime.toLocaleString()}
       </div>
     `;
-    
+
     // Remove any existing expired session warning
     const existingExpiredWarning = document.getElementById('sessionExpired');
     if (existingExpiredWarning) {
@@ -3589,12 +4438,12 @@ async function restartSession() {
     // Keep existing attendance data when restarting session
     renderTable();
     startListeningToAttendance();
-    
+
     showNotification('✅ Session restarted successfully with fresh expiry', 'success');
-    
-    
+
+
   } catch (error) {
-    
+
     alert('Error restarting session. Please try again.');
   }
 }
@@ -3635,19 +4484,19 @@ function closeStudentDetailsModal() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  
+document.addEventListener('DOMContentLoaded', function () {
+
 
   // Add click handler for close button
   const closeBtn = document.getElementById('closeStudentDetails');
   if (closeBtn) {
     closeBtn.addEventListener('click', closeStudentDetailsModal);
   }
-  
+
   // Close modal when clicking outside the card
   const modal = document.getElementById('studentDetailsModal');
   if (modal) {
-    modal.addEventListener('click', function(e) {
+    modal.addEventListener('click', function (e) {
       if (e.target === modal) {
         closeStudentDetailsModal();
       }
@@ -3655,7 +4504,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Sync modal with back/forward navigation
-  window.addEventListener('popstate', function() {
+  window.addEventListener('popstate', function () {
     const params = new URLSearchParams(window.location.search);
     const isStudent = params.get('view') === 'student';
     const id = params.get('id');
@@ -3673,18 +4522,18 @@ document.addEventListener('DOMContentLoaded', function() {
   // Only set up teacher dashboard elements if we're not on the student check-in page
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
-  
+
   if (!sessionId) {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('attendanceDate').value = today;
-    
+
     document.getElementById('attendanceDate').addEventListener('change', () => { validateForm(); handleSessionPrefill(); });
     document.getElementById('subjectCode').addEventListener('change', () => { validateForm(); handleSessionPrefill(); });
     document.getElementById('secretCode').addEventListener('input', validateForm);
     document.getElementById('startBtn').addEventListener('click', startAttendance);
-    
+
     // Login form enter key handling
-    document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+    document.getElementById('loginPassword').addEventListener('keypress', function (e) {
       if (e.key === 'Enter') {
         handleLogin();
       }
@@ -3728,7 +4577,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     updateRollPlaceholder();
     setupSorting();
-    
+
     // Run once on load to detect any existing session for today/selected subject
     handleSessionPrefill();
     // Ensure initial render with proper roll numbers
@@ -3736,8 +4585,8 @@ document.addEventListener('DOMContentLoaded', function() {
     updateRollPlaceholder();
     renderTable();
   } else {
-    
-    (function ensureStudentPageRollMaps(){
+
+    (function ensureStudentPageRollMaps() {
       const studentList = (typeof students !== 'undefined' && Array.isArray(students))
         ? students
         : (Array.isArray(window.students) ? window.students : []);
@@ -3758,7 +4607,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-window.addEventListener('beforeunload', function() {
+window.addEventListener('beforeunload', function () {
   stopListeningToAttendance();
 });
 
@@ -3823,13 +4672,13 @@ function updateRollPlaceholder() {
     if (total > 0) {
       input.placeholder = `Enter your Roll Number (1-${total})`;
     }
-  } catch {}
+  } catch { }
 }
 function compareValues(key, ascending = true) {
-  return function(a, b) {
+  return function (a, b) {
     let varA = (a[key] || '').toString().toUpperCase();
     let varB = (b[key] || '').toString().toUpperCase();
-    
+
     if (varA < varB) {
       return ascending ? -1 : 1;
     }
@@ -3843,7 +4692,7 @@ function compareValues(key, ascending = true) {
 function customStatusSort(a, b) {
   const aPresent = !!attendance[a.id];
   const bPresent = !!attendance[b.id];
-  
+
   if (statusSortMode === 'presentFirst') {
     if (aPresent && !bPresent) return -1;
     if (!aPresent && bPresent) return 1;
@@ -3851,24 +4700,24 @@ function customStatusSort(a, b) {
     if (!aPresent && bPresent) return -1;
     if (aPresent && !bPresent) return 1;
   }
-  
+
   return compareValues('name', true)(a, b);
 }
 
 function sortData(data) {
   if (!sortColumn) return data;
-  
+
   if (sortColumn === 'status') {
     return data.sort(customStatusSort);
   } else if (sortColumn === 'time') {
     return data.sort((a, b) => {
       const aTime = attendanceTime[a.id] || '';
       const bTime = attendanceTime[b.id] || '';
-      
+
       if (aTime === '' && bTime !== '') return sortAsc ? 1 : -1;
       if (bTime === '' && aTime !== '') return sortAsc ? -1 : 1;
       if (aTime === '' && bTime === '') return 0;
-      
+
       return sortAsc ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
     });
   } else if (sortColumn === 'roll') {
@@ -3879,7 +4728,7 @@ function sortData(data) {
       return sortAsc ? (ra - rb) : (rb - ra);
     });
   }
-  
+
   return data.sort(compareValues(sortColumn, sortAsc));
 }
 
@@ -3896,12 +4745,12 @@ function setupSorting() {
   Object.keys(headers).forEach(headerId => {
     const header = document.getElementById(headerId);
     const columnKey = headers[headerId];
-    
+
     if (!header) return;
-    
+
     header.dataset.originalText = header.textContent;
-    
-    header.addEventListener('click', function() {
+
+    header.addEventListener('click', function () {
       Object.keys(headers).forEach(id => {
         const h = document.getElementById(id);
         if (h) {
@@ -3934,7 +4783,7 @@ function setupSorting() {
           }
         }
         statusSortMode = null;
-        
+
         const indicator = sortAsc ? ' ▲' : ' ▼';
         header.textContent = header.dataset.originalText + indicator;
       }
@@ -3959,12 +4808,12 @@ function applyFilters() {
   if (searchTerm !== '') {
     filtered = filtered.filter(student => {
       const rollStr = String(getRollNumberById(student.id) || '').toLowerCase();
-      return student.name.toLowerCase().includes(searchTerm) || 
-            student.father.toLowerCase().includes(searchTerm) ||
-            student.id.toLowerCase().includes(searchTerm) ||
-            rollStr.includes(searchTerm);
+      return student.name.toLowerCase().includes(searchTerm) ||
+        student.father.toLowerCase().includes(searchTerm) ||
+        student.id.toLowerCase().includes(searchTerm) ||
+        rollStr.includes(searchTerm);
     });
-    
+
     return filtered;
   }
 
@@ -3973,20 +4822,20 @@ function applyFilters() {
 
 async function findExistingSession(date, subjectCode) {
   if (!firebaseInitialized) {
-    
-    
+
+
     const localSessionKey = `session_${date}_${subjectCode}`;
     const localSession = localStorage.getItem(localSessionKey);
     if (localSession) {
-      
+
       return JSON.parse(localSession);
     }
     return null;
   }
 
   try {
-    
-    
+
+
     const sessionsRef = db.collection('attendanceSessions');
     const querySnapshot = await sessionsRef
       .where('date', '==', date)
@@ -3996,14 +4845,14 @@ async function findExistingSession(date, subjectCode) {
 
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];
-      
+
       return { id: doc.id, ...doc.data() };
     }
 
-    
+
     return null;
   } catch (error) {
-    
+
     return null;
   }
 }
@@ -4012,7 +4861,7 @@ async function loadExistingAttendance(sessionId) {
   // Keep existing attendance data to prevent UI flicker
   const existingAttendance = { ...attendance };
   const existingAttendanceTime = { ...attendanceTime };
-  
+
   attendance = {};
   attendanceTime = {};
 
@@ -4021,13 +4870,13 @@ async function loadExistingAttendance(sessionId) {
       const attendanceRef = db.collection('attendanceSessions')
         .doc(sessionId)
         .collection('attendance');
-      
+
       const snapshot = await attendanceRef.get();
-      
+
       snapshot.forEach((doc) => {
         const data = doc.data();
         const studentId = doc.id;
-        
+
         attendance[studentId] = true;
         if (data.markedAt && data.markedAt.seconds) {
           attendanceTime[studentId] = new Date(data.markedAt.seconds * 1000).toLocaleTimeString();
@@ -4038,13 +4887,13 @@ async function loadExistingAttendance(sessionId) {
 
       (`📚 Loaded ${Object.keys(attendance).length} attendance records from Firebase`);
     } catch (error) {
-      
+
     }
   }
 
   const localAttendanceKey = 'attendance_' + sessionId;
   const localAttendance = JSON.parse(localStorage.getItem(localAttendanceKey) || '{}');
-  
+
   // Merge local attendance with existing data
   Object.keys(localAttendance).forEach(studentId => {
     if (!attendance[studentId]) {
@@ -4052,7 +4901,7 @@ async function loadExistingAttendance(sessionId) {
       attendanceTime[studentId] = localAttendance[studentId].time || '-';
     }
   });
-  
+
   // Preserve any existing attendance that wasn't overwritten
   Object.keys(existingAttendance).forEach(studentId => {
     if (!attendance[studentId]) {
@@ -4068,7 +4917,7 @@ async function createAttendanceSession(sessionData) {
   // Calculate expiry time (1 hour from now)
   const expiryTime = new Date();
   expiryTime.setHours(expiryTime.getHours() + 1);
-  
+
   // Ensure all required fields are included in the session data
   const sessionWithExpiry = {
     ...sessionData,
@@ -4077,7 +4926,7 @@ async function createAttendanceSession(sessionData) {
     isExpired: false,
     createdAt: sessionData.createdAt || new Date().toISOString()
   };
-  
+
   // Save to localStorage with both keys for backward compatibility
   const localSessionKey = `session_${sessionData.date}_${sessionData.subjectCode}`;
   const sessionString = JSON.stringify(sessionWithExpiry);
@@ -4085,7 +4934,7 @@ async function createAttendanceSession(sessionData) {
   localStorage.setItem('attendanceSession_' + sessionData.sessionId, sessionString);
 
   if (!firebaseInitialized) {
-    
+
     return;
   }
 
@@ -4099,9 +4948,9 @@ async function createAttendanceSession(sessionData) {
       expiryTime: firebase.firestore.Timestamp.fromDate(expiryTime),
       isExpired: false
     });
-    
+
   } catch (error) {
-    
+
   }
 }
 
@@ -4124,24 +4973,24 @@ async function createNewSession(date, subject, secretCode) {
     try {
       const docRef = await db.collection('sessions').add(sessionData);
       sessionId = docRef.id;
-      
+
     } catch (error) {
-      
+
       // Create a local ID for offline use
       sessionId = 'offline_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       // Store in local storage for offline use
       const offlineSessions = JSON.parse(localStorage.getItem('offlineSessions') || '[]');
       offlineSessions.push({ id: sessionId, ...sessionData });
       localStorage.setItem('offlineSessions', JSON.stringify(offlineSessions));
-      
-      
+
+
       // Show warning to user
       showNotification('⚠️ Working in offline mode. Data will sync when back online.', 'warning');
     }
-    
+
     return sessionId;
   } catch (error) {
-    
+
     throw error;
   }
 }
@@ -4149,7 +4998,7 @@ async function createNewSession(date, subject, secretCode) {
 async function markStudentPresent(studentId, studentData) {
   const attendanceKey = 'attendance_' + sessionId;
   let sessionAttendance = JSON.parse(localStorage.getItem(attendanceKey) || '{}');
-  
+
   // Store in local storage first for offline support
   sessionAttendance[studentId] = studentData;
   localStorage.setItem(attendanceKey, JSON.stringify(sessionAttendance));
@@ -4157,9 +5006,9 @@ async function markStudentPresent(studentId, studentData) {
   // Update local state
   attendance[studentId] = true;
   attendanceTime[studentId] = studentData.time || new Date().toLocaleTimeString();
-  
+
   if (!firebaseInitialized || !studentId || !sessionId) {
-    
+
     return false;
   }
 
@@ -4169,14 +5018,14 @@ async function markStudentPresent(studentId, studentData) {
       .doc(sessionId)
       .collection('attendance')
       .doc(studentId.toString());
-    
+
     // Prepare the data to save
     const attendanceData = {
       ...studentData,
       markedAt: firebase.firestore.FieldValue.serverTimestamp(),
       timestamp: Date.now()
     };
-    
+
     // Save the attendance record
     await attendanceRef.set(attendanceData, { merge: true });
 
@@ -4188,92 +5037,92 @@ async function markStudentPresent(studentId, studentData) {
         lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-    
+
     return true;
   } catch (error) {
-    
-    
+
+
     // If offline, the data will be synced when back online
     if (error.code === 'unavailable') {
-      
+
       return true; // Consider it a success since it will sync later
     }
-    
+
     return false;
   }
 }
 
 function startListeningToAttendance() {
   if (!sessionId) return;
-  
-  
-  
+
+
+
   // Clear any existing listener
   if (attendanceListener) {
     attendanceListener();
   }
-  
+
   // Try online first
   try {
     // Use the correct path: attendanceSessions/{sessionId}/attendance
     const attendanceRef = db.collection('attendanceSessions')
       .doc(sessionId)
       .collection('attendance');
-      
+
     attendanceListener = attendanceRef.onSnapshot(
       (snapshot) => {
         // Success callback
         ('Received attendance update with', snapshot.docChanges().length, 'changes');
-        
+
         snapshot.docChanges().forEach((change) => {
           const data = change.doc.data();
           const studentId = data.studentId;
-          
+
           if (!studentId) {
-            
+
             return;
           }
-          
+
           switch (change.type) {
             case 'added':
             case 'modified':
-              
+
               // Update local attendance state
               attendance[studentId] = true;
               attendanceTime[studentId] = data.timestamp?.toDate?.() || data.markedAt?.toDate?.() || new Date();
-              
+
               // Update the UI
               const student = students.find(s => s.id.toString() === studentId);
               if (student) {
                 updateAttendance(studentId, 'present', attendanceTime[studentId]);
-                
+
               }
               break;
-              
+
             case 'removed':
-              
+
               delete attendance[studentId];
               delete attendanceTime[studentId];
               updateAttendance(studentId, 'absent', null);
-              
+
               break;
           }
         });
-        
+
         updateStats();
         updateFirebaseStatus('🟢 Connected to Firebase', 'connected');
         renderTable();
       },
       (error) => {
         // Error callback
-        
+
         loadOfflineAttendance();
         updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
         showNotification('Connection issues. Working in offline mode.', 'error');
       }
     );
   } catch (error) {
-    
+
     loadOfflineAttendance();
     updateFirebaseStatus('⚠️ Working in offline mode', 'warning');
     showNotification('Working in offline mode. Data will sync when back online.', 'warning');
@@ -4282,16 +5131,16 @@ function startListeningToAttendance() {
 
 function updateAttendance(studentId, status, timestamp) {
   if (!studentId) return;
-  
+
   attendance[studentId] = status === 'present';
-  
+
   if (timestamp) {
     const date = timestamp instanceof Date ? timestamp : timestamp.toDate();
     attendanceTime[studentId] = date.toLocaleTimeString();
   } else {
     attendanceTime[studentId] = new Date().toLocaleTimeString();
   }
-  
+
   // Update the UI
   updateStats();
   renderTable();
@@ -4328,7 +5177,7 @@ async function markStudentPresentManually(studentId, studentName) {
     // Update local attendance state immediately
     attendance[studentId] = true;
     attendanceTime[studentId] = new Date().toLocaleTimeString();
-    
+
     // Update UI
     updateStats();
     renderTable();
@@ -4372,7 +5221,7 @@ async function markStudentPresentManually(studentId, studentName) {
       } catch (error) {
         console.error('Error saving manual attendance to Firebase:', error);
         showNotification('Attendance marked locally. Will sync when connection is restored.', 'warning');
-        
+
         // Save to local storage as backup
         const attendanceKey = `attendance_${activeSessionId}_${studentId}`;
         localStorage.setItem(attendanceKey, 'true');
@@ -4387,7 +5236,7 @@ async function markStudentPresentManually(studentId, studentName) {
   } catch (error) {
     console.error('Error in manual attendance marking:', error);
     showNotification('Failed to mark attendance. Please try again.', 'error');
-    
+
     // Revert local state on error
     attendance[studentId] = false;
     delete attendanceTime[studentId];
@@ -4398,7 +5247,7 @@ async function markStudentPresentManually(studentId, studentName) {
 
 function updateStats() {
   const searchTerm = document.getElementById("search")?.value.toLowerCase() || '';
-  
+
   if (searchTerm !== '') {
     return;
   }
@@ -4426,36 +5275,36 @@ function renderTable() {
     const td1 = document.createElement('td'); td1.textContent = String(getRollNumberById(student.id));
     const td2 = document.createElement('td'); td2.textContent = String(student.id);
     const td3 = document.createElement('td');
-  // Make student name clickable to view detailed attendance in modal
-  const nameLink = document.createElement('a');
-  // Keep the URL format as requested (?view=student&id=...)
-  nameLink.href = `${window.location.pathname}?view=student&id=${encodeURIComponent(String(student.id))}`;
-  nameLink.textContent = String(student.name || '');
-  nameLink.className = 'student-link';
-  nameLink.title = 'View attendance details';
-  nameLink.addEventListener('click', function(e) {
-    e.preventDefault();
-    // Update URL without reloading the page (preserve requested format)
-    const newUrl = nameLink.href;
-    window.history.pushState({ path: newUrl }, '', newUrl);
-    
-    // Show the modal and load student details
-    const modal = document.getElementById('studentDetailsModal');
-    if (modal) {
-      modal.style.display = 'flex';
-      document.body.classList.add('modal-open');
-      loadStudentDetailsPage().catch(console.error);
-    }
-  });
-  td3.appendChild(nameLink);
-  // Make entire cell clickable for easier tapping
-  td3.style.cursor = 'pointer';
-  td3.addEventListener('click', (e) => {
-    // Avoid double-handling if anchor default fires
-    if (e.target && e.target.tagName === 'A') return;
-    // Trigger the same behavior as clicking the name link
-    nameLink.click();
-  });
+    // Make student name clickable to view detailed attendance in modal
+    const nameLink = document.createElement('a');
+    // Keep the URL format as requested (?view=student&id=...)
+    nameLink.href = `${window.location.pathname}?view=student&id=${encodeURIComponent(String(student.id))}`;
+    nameLink.textContent = String(student.name || '');
+    nameLink.className = 'student-link';
+    nameLink.title = 'View attendance details';
+    nameLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      // Update URL without reloading the page (preserve requested format)
+      const newUrl = nameLink.href;
+      window.history.pushState({ path: newUrl }, '', newUrl);
+
+      // Show the modal and load student details
+      const modal = document.getElementById('studentDetailsModal');
+      if (modal) {
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+        loadStudentDetailsPage().catch(console.error);
+      }
+    });
+    td3.appendChild(nameLink);
+    // Make entire cell clickable for easier tapping
+    td3.style.cursor = 'pointer';
+    td3.addEventListener('click', (e) => {
+      // Avoid double-handling if anchor default fires
+      if (e.target && e.target.tagName === 'A') return;
+      // Trigger the same behavior as clicking the name link
+      nameLink.click();
+    });
     const td4 = document.createElement('td'); td4.textContent = String(student.father || '');
     const td5 = document.createElement('td');
     if (attendance[student.id]) {
@@ -4468,12 +5317,12 @@ function renderTable() {
       statusContainer.style.display = 'flex';
       statusContainer.style.alignItems = 'center';
       statusContainer.style.gap = '8px';
-      
+
       const statusSpan = document.createElement('span');
       statusSpan.className = 'status-absent';
       statusSpan.textContent = 'Absent';
       statusContainer.appendChild(statusSpan);
-      
+
       // Only show manual present button for authenticated teachers (not guests)
       const isGuestMode = localStorage.getItem('guestMode') === 'true';
       if (!isGuestMode) {
@@ -4481,15 +5330,15 @@ function renderTable() {
         presentBtn.textContent = 'Mark Present';
         presentBtn.className = 'manual-present-btn';
         presentBtn.title = 'Manually mark this student as present';
-        
-        presentBtn.addEventListener('click', function(e) {
+
+        presentBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           markStudentPresentManually(student.id, student.name);
         });
-        
+
         statusContainer.appendChild(presentBtn);
       }
-      
+
       td5.appendChild(statusContainer);
     }
     const td6 = document.createElement('td'); td6.textContent = attendanceTime[student.id] ? String(attendanceTime[student.id]) : '-';
@@ -4620,7 +5469,7 @@ async function exportToExcel() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (err) {
-    
+
     alert('Failed to export Excel file. Please try again.');
   }
 }
@@ -4724,19 +5573,19 @@ async function downloadAttendancePdf() {
     const fileName = `attendance${subjectPart}_${dateStr}.pdf`;
 
     const opt = {
-      margin:       [10, 10, 10, 10],
-      filename:     fileName,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      margin: [10, 10, 10, 10],
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
 
     // Use html2pdf to save
     await html2pdf().from(container).set(opt).save();
   } catch (e) {
-    
+
     // Fallback to print
-    try { printAttendance(); } catch (_) {}
+    try { printAttendance(); } catch (_) { }
   }
 }
 
@@ -4747,40 +5596,40 @@ function printAttendance() {
   let html = '';
   html += '<!DOCTYPE html><html><head><title>Attendance Print</title>';
   html += '<meta name="viewport" content="width=device-width, initial-scale=1">';
-  html += '<style>'+
-          'html,body{background:#fff !important}'+
-          'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#000}'+
-          'h1{font-size:20px;margin:0 0 10px} h2{font-size:14px;margin:0 0 20px;color:#333}'+
-          'table{width:100%;border-collapse:collapse;table-layout:auto}'+
-          'thead{display:table-header-group} tfoot{display:table-footer-group}'+
-          'tr, td, th{page-break-inside:avoid; break-inside:avoid}'+
-          'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px;vertical-align:top}'+
-          'th{background:#f0f0f0}'+
-          'tr.present td{background:#eefbea}'+
-          '@page { size: A4 landscape; margin: 10mm; }'+
-          '@media print { body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; } }'+
-          '</style></head><body>';
+  html += '<style>' +
+    'html,body{background:#fff !important}' +
+    'body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#000}' +
+    'h1{font-size:20px;margin:0 0 10px} h2{font-size:14px;margin:0 0 20px;color:#333}' +
+    'table{width:100%;border-collapse:collapse;table-layout:auto}' +
+    'thead{display:table-header-group} tfoot{display:table-footer-group}' +
+    'tr, td, th{page-break-inside:avoid; break-inside:avoid}' +
+    'th,td{border:1px solid #333;padding:8px;text-align:left;font-size:12px;vertical-align:top}' +
+    'th{background:#f0f0f0}' +
+    'tr.present td{background:#eefbea}' +
+    '@page { size: A4 landscape; margin: 10mm; }' +
+    '@media print { body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; } }' +
+    '</style></head><body>';
   html += '<h1>GNDU Attendance</h1>';
   html += `<h2>Printed: ${dateStr}</h2>`;
-  html += '<table><thead><tr>'+
-          '<th>Roll Number</th>'+
-          '<th>Student ID</th>'+
-          '<th>Name</th>'+
-          "<th>Father\\'s Name</th>"+
-          '<th>Status</th>'+
-          '<th>Check-in Time</th>'+
-          '</tr></thead><tbody>';
+  html += '<table><thead><tr>' +
+    '<th>Roll Number</th>' +
+    '<th>Student ID</th>' +
+    '<th>Name</th>' +
+    "<th>Father\\'s Name</th>" +
+    '<th>Status</th>' +
+    '<th>Check-in Time</th>' +
+    '</tr></thead><tbody>';
   filtered.forEach((student) => {
     const status = attendance[student.id] ? 'Present' : 'Absent';
     const time = attendanceTime[student.id] || '-';
-    html += '<tr class="'+(attendance[student.id] ? 'present' : '')+'">'+
-            `<td>${getRollNumberById(student.id)}</td>`+
-            `<td>${String(student.id)}</td>`+
-            `<td>${String(student.name || '')}</td>`+
-            `<td>${String(student.father || '')}</td>`+
-            `<td>${status}</td>`+
-            `<td>${time}</td>`+
-            '</tr>';
+    html += '<tr class="' + (attendance[student.id] ? 'present' : '') + '">' +
+      `<td>${getRollNumberById(student.id)}</td>` +
+      `<td>${String(student.id)}</td>` +
+      `<td>${String(student.name || '')}</td>` +
+      `<td>${String(student.father || '')}</td>` +
+      `<td>${status}</td>` +
+      `<td>${time}</td>` +
+      '</tr>';
   });
   html += '</tbody></table>';
   html += '<script>window.addEventListener("afterprint", function(){ setTimeout(function(){ window.close && window.close(); }, 0); });<\/script>';
@@ -4796,7 +5645,7 @@ function printAttendance() {
   iframe.setAttribute('aria-hidden', 'true');
 
   const cleanup = () => {
-    try { document.body.removeChild(iframe); } catch (_) {}
+    try { document.body.removeChild(iframe); } catch (_) { }
   };
 
   const triggerPrint = () => {
@@ -4804,8 +5653,8 @@ function printAttendance() {
       const win = iframe.contentWindow || iframe;
       // Delay slightly to ensure layout/render is complete
       setTimeout(() => {
-        try { win.focus(); } catch (_) {}
-        try { win.print(); } catch (_) {}
+        try { win.focus(); } catch (_) { }
+        try { win.print(); } catch (_) { }
         // Fallback cleanup if afterprint doesn't fire
         setTimeout(cleanup, 3000);
       }, 500);
@@ -4831,26 +5680,26 @@ function printAttendance() {
 }
 
 // Manual test function for expiry
-window.testExpiredSession = function() {
+window.testExpiredSession = function () {
   const testSessionId = 'TEST_EXPIRED_' + Date.now();
   const expiredSession = {
     sessionId: testSessionId,
     date: new Date().toLocaleDateString('en-GB'),
     subjectName: 'Test Session',
     teacherName: 'Test Teacher',
-    timeSlot: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+    timeSlot: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     secretCode: 'TEST123',
     expiryTime: new Date(Date.now() - 1000).toISOString(), // 1 second ago
     isExpired: true
   };
-  
+
   // Store in localStorage for testing
   localStorage.setItem('attendanceSession_' + testSessionId, JSON.stringify(expiredSession));
-  
+
   // Navigate to test URL
   const testUrl = window.location.href.split('?')[0] + '?session=' + testSessionId;
-  
-  
+
+
   // Optionally open in new tab
   if (confirm('Open test expired session in new tab?')) {
     window.open(testUrl, '_blank');
@@ -4899,7 +5748,7 @@ function printTableAsIs() {
     w.document.write(doc);
     w.document.close();
   } catch (err) {
-    
+
     alert('Unable to print the table.');
   }
 }
@@ -4910,76 +5759,76 @@ window.printAttendance = printAttendance;
 window.printTableAsIs = printTableAsIs;
 
 async function showStudentCheckin(sessionParam) {
-  
+
   let session = JSON.parse(localStorage.getItem('attendanceSession_' + sessionParam) || 'null');
-  
+
   // If we have a valid cached session, use it temporarily while validating from server
   if (session && session.sessionId === sessionParam) {
-    
-    
+
+
     // If session appears expired in cache, still try to validate from server first
     // This handles cases where local clock is wrong or cache is stale
     if (isSessionExpired(session)) {
-      
-      
+
+
       // If Firebase is initialized, validate from server before showing expiry
       if (firebaseInitialized) {
         try {
-          
+
           const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
-          
+
           if (doc.exists) {
             const freshSession = doc.data();
-            
-            
+
+
             // Convert Firestore Timestamp to proper format
             if (freshSession.expiryTime && typeof freshSession.expiryTime.toDate === 'function') {
               freshSession.expiryTime = freshSession.expiryTime.toDate().toISOString();
             } else if (freshSession.expiryTime && typeof freshSession.expiryTime.seconds === 'number') {
               freshSession.expiryTime = new Date(freshSession.expiryTime.seconds * 1000).toISOString();
             }
-            
+
             // Update cache with fresh data
             localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(freshSession));
-            
+
             // Now check expiry with fresh data
             if (isSessionExpired(freshSession)) {
-              
+
               displayExpiredSessionMessage();
               return;
             } else {
-              
+
               session = freshSession;
               displayStudentCheckin(session);
               return;
             }
           } else {
-            
+
             showError('Session not found or has expired');
             return;
           }
         } catch (error) {
-          
+
           // If server check fails, fall back to cached session expiry
-          
+
           displayExpiredSessionMessage();
           return;
         }
       } else {
         // Firebase not initialized, fall back to cached expiry check
-        
+
         displayExpiredSessionMessage();
         return;
       }
     }
-    
+
     // For cached sessions without expiry, force refresh from Firestore
     if (!session.expiryTime && firebaseInitialized) {
-      
+
       // Skip cached session and use Firestore instead
     } else {
       displayStudentCheckin(session);
-      
+
       // Still try to update from Firestore in the background
       if (firebaseInitialized) {
         updateSessionFromFirestore(sessionParam);
@@ -4987,22 +5836,22 @@ async function showStudentCheckin(sessionParam) {
       return;
     }
   }
-  
+
   // If we don't have a valid session, try to load from Firestore using cached approach
   if (firebaseInitialized) {
     try {
       console.log('Loading session from Firebase with caching');
       session = await getCachedSession(sessionParam);
-      
+
       console.log('Session loaded:', session ? 'Success' : 'Failed');
-      
+
       if (session) {
         // Check if session is expired before displaying
         if (isSessionExpired(session)) {
           displayExpiredSessionMessage();
           return;
         }
-        
+
         // Display the check-in form
         displayStudentCheckin(session);
       } else {
@@ -5014,13 +5863,13 @@ async function showStudentCheckin(sessionParam) {
     }
   } else {
     // Wait for Firebase to initialize
-    
+
     try {
       await initializeFirebase();
       // Once Firebase is initialized, try loading the session again
       await showStudentCheckin(sessionParam);
     } catch (error) {
-      
+
       showError('Unable to connect to the server. Please check your internet connection and refresh the page.');
     }
   }
@@ -5031,19 +5880,19 @@ async function updateSessionFromFirestore(sessionParam) {
     const doc = await db.collection('attendanceSessions').doc(sessionParam).get();
     if (doc.exists) {
       let session = doc.data();
-      
-      
+
+
       // Convert Firestore Timestamp to proper format for consistency
       if (session.expiryTime && typeof session.expiryTime.toDate === 'function') {
         session.expiryTime = session.expiryTime.toDate().toISOString();
       } else if (session.expiryTime && typeof session.expiryTime.seconds === 'number') {
         session.expiryTime = new Date(session.expiryTime.seconds * 1000).toISOString();
       }
-      
+
       localStorage.setItem('attendanceSession_' + sessionParam, JSON.stringify(session));
     }
   } catch (error) {
-    
+
   }
 }
 
@@ -5053,14 +5902,14 @@ function showError(message) {
     setMessage(messageDiv, 'error', `❌ ${message}`);
     // Scroll to the error message
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    
+
     // Re-enable the submit button if it was disabled
     const submitBtn = document.getElementById('submitBtn');
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Mark Me Present';
     }
-    
+
     // Enable all form fields
     const form = document.getElementById('studentCheckinForm');
     if (form) {
@@ -5076,12 +5925,12 @@ function displayExpiredSessionMessage() {
   const loginScreen = document.getElementById('loginScreen');
   const teacherDashboard = document.getElementById('teacherDashboard');
   const checkinSection = document.getElementById('studentCheckin');
-  
+
   if (loginScreen) loginScreen.style.display = 'none';
   if (teacherDashboard) teacherDashboard.style.display = 'none';
   if (checkinSection) {
     checkinSection.style.display = 'block';
-    
+
     // Replace the entire content with expired message
     checkinSection.innerHTML = `
       <div class="checkin-header">
@@ -5103,20 +5952,20 @@ function displayExpiredSessionMessage() {
 }
 
 async function displayStudentCheckin(session) {
-  
-  
+
+
   // Check if session is expired
   if (isSessionExpired(session)) {
     // Hide other sections and show expired message
     const loginScreen = document.getElementById('loginScreen');
     const teacherDashboard = document.getElementById('teacherDashboard');
     const checkinSection = document.getElementById('studentCheckin');
-    
+
     if (loginScreen) loginScreen.style.display = 'none';
     if (teacherDashboard) teacherDashboard.style.display = 'none';
     if (checkinSection) {
       checkinSection.style.display = 'block';
-      
+
       // Clear the form and show attendance over message
       const form = document.querySelector('.checkin-form');
       if (form) {
@@ -5136,32 +5985,32 @@ async function displayStudentCheckin(session) {
     }
     return;
   }
-  
+
   // Store the secret code for validation
   window.sessionSecretCode = session.secretCode || '';
-  
+
   // Hide other sections
   const loginScreen = document.getElementById('loginScreen');
   const teacherDashboard = document.getElementById('teacherDashboard');
   if (loginScreen) loginScreen.style.display = 'none';
   if (teacherDashboard) teacherDashboard.style.display = 'none';
-  
+
   // Show the check-in section
   const checkinSection = document.getElementById('studentCheckin');
   if (checkinSection) {
     checkinSection.style.display = 'block';
-    
+
     // Add form submission handler
     const form = document.querySelector('.checkin-form');
     if (form) {
-      form.onsubmit = function(e) {
+      form.onsubmit = function (e) {
         e.preventDefault();
         submitAttendance();
         return false;
       };
     }
   }
-  
+
   // Update session info
   const classInfo = document.getElementById('checkinClassInfo');
   if (classInfo) {
@@ -5176,52 +6025,52 @@ async function displayStudentCheckin(session) {
     classInfo.appendChild(p1);
     classInfo.appendChild(p2);
   }
-  
+
   // Initialize form elements
   const form = document.getElementById('studentCheckinForm');
   const submitBtn = document.getElementById('submitBtn');
   const messageDiv = document.getElementById('checkinMessage');
-  
+
   let locationVerified = false;
   let locationDistance = 0;
-  
+
   // Initialize form
   if (form) form.reset();
-  
+
   // Set initial button state
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Checking location...';
   }
-  
+
   // Initialize location variables
   window.locationVerified = false;
   window.locationDistance = 0;
-  
+
   // Show initial message
   if (messageDiv) {
     messageDiv.innerHTML = '';
   }
-  
+
   // Set initial button state and automatically verify location
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Checking location...';
-    
+
     // Show initial status
     showLocationStatus('📍 Automatically verifying your location...', 'info');
-    
+
     // Automatically verify location when page loads
-    (async function() {
+    (async function () {
       try {
         const locationResult = await checkUserLocation();
         window.locationVerified = locationResult.success;
         window.locationDistance = locationResult.distance || 0;
-        
+
         if (window.locationVerified) {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Mark Me Present';
-          submitBtn.onclick = function(e) {
+          submitBtn.onclick = function (e) {
             e.preventDefault();
             submitAttendance();
           };
@@ -5229,13 +6078,13 @@ async function displayStudentCheckin(session) {
         } else {
           submitBtn.disabled = true;
           submitBtn.textContent = 'Location Verification Failed';
-          const distanceText = window.locationDistance >= 1000 
-            ? `${(window.locationDistance / 1000).toFixed(1)} km away` 
+          const distanceText = window.locationDistance >= 1000
+            ? `${(window.locationDistance / 1000).toFixed(1)} km away`
             : `${Math.round(window.locationDistance)} meters away`;
           showLocationStatus(`❌ You are ${distanceText} from GNDU`, 'denied');
-          
+
           // Add retry button functionality
-          submitBtn.onclick = async function(e) {
+          submitBtn.onclick = async function (e) {
             e.preventDefault();
             location.reload();
           };
@@ -5245,14 +6094,14 @@ async function displayStudentCheckin(session) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Location Error - Try Again';
         showLocationStatus('❌ Location verification failed. Click to retry.', 'denied');
-        submitBtn.onclick = async function(e) {
+        submitBtn.onclick = async function (e) {
           e.preventDefault();
           location.reload();
         };
       }
     })();
   }
-  
+
   // Focus on the first input field after location check
   const firstInput = form?.querySelector('input');
   if (firstInput) {
@@ -5260,7 +6109,7 @@ async function displayStudentCheckin(session) {
   }
 }
 
- 
+
 async function submitAttendance() {
   // Gather inputs and helpers
   const urlSessionId = new URLSearchParams(window.location.search).get('session') || (currentSession && currentSession.sessionId) || sessionId || '';
@@ -5314,50 +6163,50 @@ async function submitAttendance() {
   try {
     // First try to get from localStorage
     const sessionData = localStorage.getItem('attendanceSession_' + urlSessionId);
-    
+
     if (sessionData) {
       // If found in localStorage, use it
       session = JSON.parse(sessionData);
-      
-      
+
+
       // If session exists but is missing secretCode, try to get fresh data
       if (!session.secretCode) {
-        
+
         const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
         if (sessionDoc.exists) {
           session = sessionDoc.data();
-          
+
           // Update localStorage with fresh data
           localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
         }
       }
     } else {
       // If not in localStorage, try to fetch from Firestore
-      
+
       const sessionDoc = await db.collection('attendanceSessions').doc(urlSessionId).get();
-      
+
       if (!sessionDoc.exists) {
         throw new Error('Session not found in database');
       }
-      
+
       session = sessionDoc.data();
-      
-      
+
+
       // Save to localStorage for future use
       localStorage.setItem('attendanceSession_' + urlSessionId, JSON.stringify(session));
     }
-    
+
     // Final validation
     if (!session) {
       throw new Error('Failed to load session data');
     }
-    
+
     if (!session.secretCode) {
-      
+
       throw new Error('This session is not properly configured. Please contact your teacher.');
     }
   } catch (error) {
-    
+
     showError('Session configuration error. Please contact your teacher or try again later.');
     // Re-enable form on validation error
     if (submitBtn) {
@@ -5383,8 +6232,8 @@ async function submitAttendance() {
   // Use the location result from the initial check
   if (!window.locationVerified) {
     const distance = window.locationDistance || 0;
-    const distanceText = distance >= 1000 
-      ? `${(distance / 1000).toFixed(1)} km away` 
+    const distanceText = distance >= 1000
+      ? `${(distance / 1000).toFixed(1)} km away`
       : `${Math.round(distance)} meters away`;
     showError(`❌ You must be inside the university campus to mark attendance. You are ${distanceText} from GNDU.`);
     // Re-enable form on validation error
@@ -5414,7 +6263,7 @@ async function submitAttendance() {
     const studentList = Array.isArray(students) ? students : (Array.isArray(window.students) ? window.students : []);
     const student = studentList.find(s => s?.id?.toString() === String(mappedStudentId));
     const inputNorm = normalizeName(studentName);
-    
+
     // Validate both name and roll number match
     if (!student) {
       showError('❌ Invalid Roll Number. Please check your roll number and try again.');
@@ -5426,7 +6275,7 @@ async function submitAttendance() {
       if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
       return;
     }
-    
+
     const actualNameNorm = normalizeName(student.name);
     if (inputNorm !== actualNameNorm) {
       showError('❌ Name does not match the roll number. Please ensure both your name and roll number are correct.');
@@ -5438,19 +6287,19 @@ async function submitAttendance() {
       if (form) form.querySelectorAll('input').forEach(input => input.disabled = false);
       return;
     }
-    
+
     // Check if already marked present in this session (both locally and on server)
     const attendanceKey = `attendance_${urlSessionId}_${mappedStudentId}`;
     const localAttendanceBool = localStorage.getItem(attendanceKey) === 'true';
     let localAttendanceObj = {};
     try { localAttendanceObj = JSON.parse(localStorage.getItem(attendanceKey) || '{}'); } catch (_) { localAttendanceObj = {}; }
-    
+
     // IP address verification for non-logged-in users
     if (!isLoggedIn) {
       // Create a key for this session using IP address hash to prevent multiple attendance marks
       const deviceKey = `device_${urlSessionId}`;
       const deviceVerification = localStorage.getItem(deviceKey);
-      
+
       if (deviceVerification) {
         showError('❌ Your device can mark attendance only one time per session. If you need to update your attendance, please contact your teacher.');
         // Disable the form since this device already marked attendance
@@ -5462,7 +6311,7 @@ async function submitAttendance() {
         return;
       }
     }
-    
+
     // Check server for existing attendance
     try {
       // Check both the session document and the attendance subcollection
@@ -5471,11 +6320,11 @@ async function submitAttendance() {
         db.collection('attendanceSessions').doc(urlSessionId)
           .collection('attendance').doc(mappedStudentId).get()
       ]);
-      
+
       const sessionData = sessionDoc.exists ? sessionDoc.data() : {};
       const isMarkedInSession = sessionData.attendance && sessionData.attendance[mappedStudentId] === true;
       const hasAttendanceRecord = attendanceDoc.exists;
-      
+
       if (localAttendanceBool || isMarkedInSession || hasAttendanceRecord) {
         showError('✅ Your attendance is already marked as present for this session.');
         // Disable the form since attendance is already marked
@@ -5491,10 +6340,10 @@ async function submitAttendance() {
         return;
       }
     } catch (error) {
-      
+
       // Continue with submission if we can't verify from server
     }
-    
+
     // Check old local storage format for backward compatibility
     const oldLocalAttendance = JSON.parse(localStorage.getItem('attendance_' + urlSessionId) || '{}');
     if (oldLocalAttendance[mappedStudentId]) {
@@ -5508,7 +6357,7 @@ async function submitAttendance() {
       localStorage.setItem(attendanceKey, 'true');
       return;
     }
-    
+
     // Prepare attendance data with all required fields
     const currentTime = new Date();
     const attendanceData = {
@@ -5537,7 +6386,7 @@ async function submitAttendance() {
             maximumAge: 0
           });
         });
-        
+
         if (position?.coords) {
           attendanceData.latitude = position.coords.latitude;
           attendanceData.longitude = position.coords.longitude;
@@ -5556,7 +6405,7 @@ async function submitAttendance() {
       if (firebaseInitialized && typeof db !== 'undefined') {
         const batch = db.batch();
         const sessionRef = db.collection('attendanceSessions').doc(urlSessionId);
-        
+
         // Update the attendance map in the session document
         const updateData = {
           [`attendance.${mappedStudentId}`]: true,
@@ -5564,31 +6413,31 @@ async function submitAttendance() {
           [`attendanceRecords.${mappedStudentId}`]: attendanceData,
           lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
         };
-        
+
         // Add the update to the batch
         batch.update(sessionRef, updateData);
-        
+
         // Also add to the attendance subcollection for detailed records
         const attendanceRef = sessionRef.collection('attendance').doc(mappedStudentId);
         batch.set(attendanceRef, {
           ...attendanceData,
           timestamp: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
-        
+
         // Commit the batch
         await batch.commit();
-        
-        
-        
-      // Update local storage to prevent duplicate submissions
-      localStorage.setItem(attendanceKey, 'true');
-      
-      // For non-logged-in users, mark this device as having submitted attendance for this session
-      if (!isLoggedIn) {
-        const deviceKey = `device_${urlSessionId}`;
-        localStorage.setItem(deviceKey, new Date().toISOString());
-      }
-        
+
+
+
+        // Update local storage to prevent duplicate submissions
+        localStorage.setItem(attendanceKey, 'true');
+
+        // For non-logged-in users, mark this device as having submitted attendance for this session
+        if (!isLoggedIn) {
+          const deviceKey = `device_${urlSessionId}`;
+          localStorage.setItem(deviceKey, new Date().toISOString());
+        }
+
         // Show success message
         if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded successfully! ${student.name} (${student.id}) is marked present.`); }
       } else {
@@ -5601,26 +6450,26 @@ async function submitAttendance() {
           timestamp: new Date().toISOString()
         };
         localStorage.setItem(attendanceKey, JSON.stringify(localAttendanceObj));
-        
+
         if (messageDiv) { setMessage(messageDiv, 'success', `✅ Attendance recorded locally! ${student.name} (${student.id}) is marked present.`); }
       }
-      
+
       // Reset form and disable submit button
       if (form) form.reset();
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Attendance Recorded';
       }
-      
+
       // Auto-close after 5 seconds
       setTimeout(() => {
         const message = document.getElementById('checkinMessage');
         if (message) { clearElement(message); }
       }, 5000);
-      
+
     } catch (error) {
-      
-      
+
+
       // Fallback to local storage if Firestore fails
       const localId = 'local_' + Date.now();
       localAttendanceObj[student.id] = {
@@ -5630,40 +6479,40 @@ async function submitAttendance() {
         timestamp: new Date().toISOString()
       };
       localStorage.setItem(attendanceKey, JSON.stringify(localAttendanceObj));
-      
+
       // For non-logged-in users, mark this device as having submitted attendance for this session
       if (!isLoggedIn) {
         const deviceKey = `device_${urlSessionId}`;
         localStorage.setItem(deviceKey, new Date().toISOString());
       }
-      
+
       // For non-logged-in users, mark this device as having submitted attendance for this session
       if (!isLoggedIn) {
         const deviceKey = `device_${urlSessionId}`;
         localStorage.setItem(deviceKey, new Date().toISOString());
       }
-      
+
       if (messageDiv) { setMessage(messageDiv, 'warning', '⚠️ Attendance saved offline. It will sync when online.'); }
-      
+
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saved Offline';
       }
-      
+
       // Update UI if in teacher view
       if (currentSession && currentSession.sessionId === urlSessionId) {
         attendance[student.id] = true;
         attendanceTime[student.id] = new Date();
         renderTable();
       }
-      
+
       // Disable form fields
       if (form) {
         form.querySelectorAll('input').forEach(input => input.disabled = true);
       }
     }
   } catch (error) {
-    
+
     if (messageDiv) { setMessage(messageDiv, 'error', `❌ An error occurred while processing your request. Please try again later. ${error.message ? error.message : ''}`); }
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -5674,9 +6523,9 @@ async function submitAttendance() {
 }
 
 // Make functions globally accessible
-  window.submitAttendance = submitAttendance;
-  window.copyLink = copyLink;
-  window.shareWhatsApp = shareWhatsApp;
-  window.handleLogout = handleLogout;
+window.submitAttendance = submitAttendance;
+window.copyLink = copyLink;
+window.shareWhatsApp = shareWhatsApp;
+window.handleLogout = handleLogout;
 
-  // Note: Firebase initialization is triggered once from the main DOMContentLoaded
+// Note: Firebase initialization is triggered once from the main DOMContentLoaded
