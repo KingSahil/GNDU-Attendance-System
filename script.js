@@ -526,8 +526,20 @@ class FallbackEngine {
   }
 
   async verifyWithGoogleMaps(coordinates) {
+    // Try to load Google Maps API if not already loaded
     if (!window.google || !window.google.maps || !window.google.maps.geometry) {
-      throw new Error('Google Maps API not available');
+      try {
+        console.log('Loading Google Maps API for enhanced location verification...');
+        await loadGoogleMapsAPI();
+
+        // Double-check after loading
+        if (!window.google || !window.google.maps || !window.google.maps.geometry) {
+          throw new Error('Google Maps API failed to initialize properly');
+        }
+      } catch (error) {
+        console.warn('Failed to load Google Maps API:', error.message);
+        throw new Error('Google Maps API not available');
+      }
     }
 
     const key = locationManager.loadBalancer.getAvailableKey();
@@ -673,6 +685,17 @@ class PerformanceMonitor {
 
 // Initialize the enhanced location management system
 const locationManager = new LocationManager();
+
+// Preload Google Maps API for better performance
+(async function preloadGoogleMapsAPI() {
+  try {
+    console.log('🗺️ Preloading Google Maps API for optimal performance...');
+    await loadGoogleMapsAPI();
+    console.log('✅ Google Maps API preloaded successfully');
+  } catch (error) {
+    console.warn('⚠️ Google Maps API preload failed, will load on-demand:', error.message);
+  }
+})();
 
 // Legacy variables for backward compatibility
 let apiRequestQueue = [];
