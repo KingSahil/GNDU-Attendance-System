@@ -11,7 +11,7 @@ const firebaseConfig = window.firebaseConfig || {
 // University location configuration (GNDU coordinates)
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude (more precise)
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude (more precise)
-const ALLOWED_RADIUS_METERS = 3000; // 2000 meters radius
+const ALLOWED_RADIUS_METERS = 200; // 2000 meters radius
 const REQUIRED_ACCURACY = 1000;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
