@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GNDU HUB</title>
   <!-- Enhanced Content Security Policy for Google Maps and other services -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net https://maps.googleapis.com https://apis.google.com; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://maps.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; font-src 'self' data:; object-src 'none'; base-uri 'self';">
-  
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net https://maps.googleapis.com https://apis.google.com; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://maps.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  
+
   <!-- External CSS -->
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -31,7 +33,8 @@
         </div>
         <div class="form-group">
           <label for="loginPassword">Password</label>
-          <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+          <input type="password" id="loginPassword" placeholder="Enter your password" required
+            autocomplete="current-password">
         </div>
         <button type="submit" class="login-btn" id="loginBtn">Login</button>
         <div class="guest-login-section">
@@ -83,8 +86,10 @@
 
         <div class="form-group">
           <label for="secretCode">Secret Code</label>
-          <input autocomplete="off" type="text" id="secretCode" class="secret-code-input" placeholder="Set the Secret Code" required maxlength="20">
-          <small style="color: var(--text-color); opacity: 0.7; margin-top: 5px; display: block;">Students must enter this exact code to mark attendance</small>
+          <input autocomplete="off" type="text" id="secretCode" class="secret-code-input"
+            placeholder="Set the Secret Code" required maxlength="20">
+          <small style="color: var(--text-color); opacity: 0.7; margin-top: 5px; display: block;">Students must enter
+            this exact code to mark attendance</small>
         </div>
       </div>
 
@@ -105,7 +110,7 @@
       <div class="current-class-info" id="classInfo">
         <!-- Session info will be displayed here -->
       </div>
-      
+
       <div class="link-section">
         <h3>🔗 Student Check-in Link</h3>
         <p>Share this link with students to mark their attendance</p>
@@ -118,7 +123,8 @@
             <button class="share-btn" onclick="shareWhatsApp()">
               📱 Share on WhatsApp
             </button>
-            <button class="share-btn" onclick="expireSessionManually()" style="background-color: #e74c3c; color: white;">
+            <button class="share-btn" onclick="expireSessionManually()"
+              style="background-color: #e74c3c; color: white;">
               ⏰ Expire Session
             </button>
           </div>
@@ -126,11 +132,12 @@
         <div class="expiry-info" id="expiryInfo" style="margin-top: 10px; color: #666; font-size: 14px;">
           <!-- Expiry time will be displayed here -->
         </div>
-        <div class="session-expired" id="sessionExpired" style="display: none; margin-top: 10px; padding: 10px; background-color: #ffebee; color: #c62828; border-radius: 4px; font-weight: bold;">
+        <div class="session-expired" id="sessionExpired"
+          style="display: none; margin-top: 10px; padding: 10px; background-color: #ffebee; color: #c62828; border-radius: 4px; font-weight: bold;">
           ⚠️ This attendance session has expired. Students can no longer mark attendance.
         </div>
       </div>
-      
+
       <div class="stats" id="statsSection">
         <div class="stat-card">
           <div class="stat-number" id="totalStudents">0</div>
@@ -179,7 +186,8 @@
           <tbody id="studentTable"></tbody>
         </table>
       </div>
-      <div class="scroll-hint">💡 Scroll to view all columns • Click column headers to sort • Use "Mark Present" button for manual attendance</div>
+      <div class="scroll-hint">💡 Scroll to view all columns • Click column headers to sort • Use "Mark Present" button
+        for manual attendance</div>
     </div>
 
     <!-- Subject Resources Management Section -->
@@ -304,7 +312,8 @@
           <div class="misc-card-content">
             <p>Current semester time table</p>
             <div class="document-embed">
-              <img src="files/Time Table.png" alt="Time Table" class="document-image" onclick="openDocument('files/Time Table.png')">
+              <img src="files/Time Table.png" alt="Time Table" class="document-image"
+                onclick="openDocument('files/Time Table.png')">
             </div>
             <button onclick="openDocument('files/Time Table.png')" class="view-btn">View Full Size</button>
           </div>
@@ -366,12 +375,14 @@
     <div class="guest-tab-content" id="guestAttendanceTab">
       <div class="guest-info-banner">
         <h3>📚 Previous Attendance Sessions</h3>
-        <p>View attendance records from previous sessions. You cannot create new sessions or mark attendance manually.</p>
+        <p>View attendance records from previous sessions. You cannot create new sessions or mark attendance manually.
+        </p>
       </div>
 
       <div class="controls">
         <div class="search-box">
-          <input autocomplete="off" type="text" id="guestSearch" placeholder="Search students by name or father's name...">
+          <input autocomplete="off" type="text" id="guestSearch"
+            placeholder="Search students by name or father's name...">
         </div>
         <div class="share-buttons">
           <button class="share-btn" id="guestPrintBtn" title="Print current view">
@@ -438,7 +449,8 @@
           <tbody id="guestStudentTable"></tbody>
         </table>
       </div>
-      <div class="scroll-hint" id="guestScrollHint" style="display: none;">💡 Scroll to view all columns • Click column headers to sort</div>
+      <div class="scroll-hint" id="guestScrollHint" style="display: none;">💡 Scroll to view all columns • Click column
+        headers to sort</div>
     </div>
 
     <!-- Guest Resources Tab -->
@@ -510,7 +522,8 @@
         <div class="misc-card-content">
           <p>Current semester time table</p>
           <div class="document-embed">
-            <img src="files/Time Table.png" alt="Time Table" class="document-image" onclick="openDocument('files/Time Table.png')">
+            <img src="files/Time Table.png" alt="Time Table" class="document-image"
+              onclick="openDocument('files/Time Table.png')">
           </div>
           <button onclick="openDocument('files/Time Table.png')" class="view-btn">View Full Size</button>
         </div>
@@ -557,24 +570,26 @@
       <p>GNDU HUB</p>
       <p id="checkinClassInfo"></p>
     </div>
-    <form id="studentCheckinForm" onsubmit="event.preventDefault(); submitAttendance(); return false;" class="checkin-form">
+    <form id="studentCheckinForm" onsubmit="event.preventDefault(); submitAttendance(); return false;"
+      class="checkin-form">
       <div class="location-status checking" id="locationStatus">
         📍 Checking your location...
       </div>
 
       <div class="form-group">
         <label for="secretCodeInput">🔑 Secret Code</label>
-        <input autocomplete = "off" type="text" id="secretCodeInput" class="secret-code-input" placeholder="Enter the secret code" required maxlength="20">
+        <input autocomplete="off" type="text" id="secretCodeInput" class="secret-code-input"
+          placeholder="Enter the secret code" required maxlength="20">
         <small style="color: #666; margin-top: 5px; display: block;">Ask your teacher for the secret code</small>
       </div>
 
       <div class="form-group">
         <label for="studentId">Roll Number</label>
-        <input autocomplete = "off" type="text" id="studentId" placeholder="Enter your Roll Number" required>
+        <input autocomplete="off" type="text" id="studentId" placeholder="Enter your Roll Number" required>
       </div>
       <div class="form-group">
         <label for="studentName">Full Name</label>
-        <input autocomplete = "off" type="text" id="studentName" placeholder="Enter your Full Name" required>
+        <input autocomplete="off" type="text" id="studentName" placeholder="Enter your Full Name" required>
       </div>
       <button type="submit" class="checkin-btn" id="submitBtn" disabled>Mark Me Present</button>
       <div id="checkinMessage"></div>
@@ -614,9 +629,3 @@
   <script src="student.js"></script>
   <!-- Load main script -->
   <script src="script.js"></script>
-  <!-- Load performance testing suite (for development/debugging) -->
-  <script src="location-performance-test.js"></script>
-  <!-- Load Google Maps integration tests -->
-  <script src="test-google-maps-integration.js"></script>
-</body>
-</html>

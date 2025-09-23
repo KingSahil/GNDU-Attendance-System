@@ -8,790 +8,171 @@ const firebaseConfig = window.firebaseConfig || {
   measurementId: "G-7TNPBZ3ZZN"
 };
 
-// Google Maps API configuration for location services
-const GOOGLE_MAPS_API_KEY = "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8"; // Using same API key as Firebase
-let googleMapsLoaded = false;
+// University location configuration (GNDU coordinates)
+const UNIVERSITY_LAT = 31.634801;  // GNDU latitude (more precise)
+const UNIVERSITY_LNG = 74.824416;  // GNDU longitude (more precise)
+const ALLOWED_RADIUS_METERS = 2000; // 2000 meters radius
+const REQUIRED_ACCURACY = 1000;  // Maximum allowed accuracy in meters
+const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
-// Enhanced location management system for high-performance concurrent requests
-class LocationManager {
-  constructor() {
-    this.cache = new LocationCache();
-    this.queue = new SmartRequestQueue();
-    this.loadBalancer = new APILoadBalancer();
-    this.fallbackEngine = new FallbackEngine();
-    this.performanceMonitor = new PerformanceMonitor();
+// Enhanced location verification with multiple checks
+async function verifyLocation() {
+  try {
+    // Get user's current position with high accuracy
+    const position = await getCurrentPosition();
+    const userLat = position.coords.latitude;
+    const userLng = position.coords.longitude;
+    const accuracy = position.coords.accuracy;
 
-    // Start background processes
-    this.startPerformanceMonitoring();
-  }
-
-  async verifyLocation(options = {}) {
-    const startTime = Date.now();
-    const requestId = this.generateRequestId();
-
-    try {
-      this.performanceMonitor.recordRequest(requestId, startTime);
-
-      // Check cache first
-      const cachedResult = await this.cache.get(options.latitude, options.longitude);
-      if (cachedResult) {
-        this.performanceMonitor.recordCacheHit(requestId);
-        return { ...cachedResult, cached: true, requestId };
-      }
-
-      // Queue the request for processing
-      const result = await this.queue.enqueue({
-        id: requestId,
-        coordinates: options,
-        priority: options.priority || 'normal',
-        timestamp: Date.now()
-      });
-
-      // Cache successful results
-      if (result.success) {
-        await this.cache.set(options.latitude, options.longitude, result);
-      }
-
-      this.performanceMonitor.recordSuccess(requestId, Date.now() - startTime, result.method);
-      return { ...result, cached: false, requestId };
-
-    } catch (error) {
-      this.performanceMonitor.recordError(requestId, error);
-      throw error;
+    // Check GPS accuracy first
+    if (accuracy > REQUIRED_ACCURACY) {
+      throw new Error(`GPS accuracy too low: ${Math.round(accuracy)}m (required: ${REQUIRED_ACCURACY}m)`);
     }
-  }
 
-  generateRequestId() {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
+    // Calculate distance between user and university
+    const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
 
-  startPerformanceMonitoring() {
-    setInterval(() => {
-      const metrics = this.performanceMonitor.getMetrics();
-      if (metrics.totalRequests > 0) {
-        console.log(`📊 Location Performance: ${metrics.successRate}% success, ${metrics.averageResponseTime}ms avg, ${metrics.cacheHitRate}% cache hits`);
-      }
-    }, 30000);
-  }
+    // Check if user is within allowed radius
+    const isWithinRange = distance <= ALLOWED_RADIUS_METERS;
 
-  getPerformanceMetrics() {
-    return this.performanceMonitor.getMetrics();
+    // Additional security checks
+    const locationData = {
+      success: isWithinRange,
+      distance: Math.round(distance),
+      accuracy: Math.round(accuracy),
+      userLat,
+      userLng,
+      timestamp: Date.now(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      userAgent: navigator.userAgent.substring(0, 100) // Truncated for privacy
+    };
+
+    // Store location attempt for audit
+    storeLocationAttempt(locationData);
+
+    return locationData;
+  } catch (error) {
+    throw new Error(`Location verification failed: ${error.message}`);
   }
 }
 
-// Multi-level caching system for location results
-class LocationCache {
-  constructor() {
-    this.immediateCache = new Map(); // 5 seconds for exact matches
-    this.proximityCache = new Map(); // 30 seconds for nearby locations
-    this.sessionCache = new Map(); // 5 minutes for user sessions
-    this.areaCache = new Map(); // 1 hour for general area
-
-    // Start cleanup process
-    setInterval(() => this.cleanup(), 10000); // Cleanup every 10 seconds
-  }
-
-  async get(lat, lng, accuracy = 10) {
-    const key = this.generateKey(lat, lng, accuracy);
-
-    // Check immediate cache first (exact location)
-    const immediate = this.immediateCache.get(key);
-    if (immediate && !this.isExpired(immediate, 5000)) {
-      return immediate.result;
-    }
-
-    // Check proximity cache (nearby locations within 10m)
-    for (const [cacheKey, entry] of this.proximityCache.entries()) {
-      if (!this.isExpired(entry, 30000)) {
-        const distance = this.calculateDistance(lat, lng, entry.coordinates.latitude, entry.coordinates.longitude);
-        if (distance <= 10) { // Within 10 meters
-          return entry.result;
-        }
-      }
-    }
-
-    // Check session cache (user-specific)
-    const sessionKey = `session_${lat.toFixed(4)}_${lng.toFixed(4)}`;
-    const session = this.sessionCache.get(sessionKey);
-    if (session && !this.isExpired(session, 300000)) { // 5 minutes
-      return session.result;
-    }
-
-    // Check area cache (general campus area)
-    const areaKey = `area_${lat.toFixed(3)}_${lng.toFixed(3)}`;
-    const area = this.areaCache.get(areaKey);
-    if (area && !this.isExpired(area, 3600000)) { // 1 hour
-      return area.result;
-    }
-
-    return null;
-  }
-
-  async set(lat, lng, result, ttl = 5000) {
-    const timestamp = Date.now();
-    const coordinates = { latitude: lat, longitude: lng };
-
-    // Store in immediate cache
-    const immediateKey = this.generateKey(lat, lng, 1);
-    this.immediateCache.set(immediateKey, {
-      result,
-      timestamp,
-      coordinates,
-      ttl: 5000
-    });
-
-    // Store in proximity cache
-    const proximityKey = this.generateKey(lat, lng, 10);
-    this.proximityCache.set(proximityKey, {
-      result,
-      timestamp,
-      coordinates,
-      ttl: 30000
-    });
-
-    // Store in session cache
-    const sessionKey = `session_${lat.toFixed(4)}_${lng.toFixed(4)}`;
-    this.sessionCache.set(sessionKey, {
-      result,
-      timestamp,
-      coordinates,
-      ttl: 300000
-    });
-
-    // Store in area cache if within campus
-    if (result.success) {
-      const areaKey = `area_${lat.toFixed(3)}_${lng.toFixed(3)}`;
-      this.areaCache.set(areaKey, {
-        result,
-        timestamp,
-        coordinates,
-        ttl: 3600000
-      });
-    }
-  }
-
-  generateKey(lat, lng, accuracy) {
-    return `${lat.toFixed(6)}_${lng.toFixed(6)}_${accuracy}`;
-  }
-
-  isExpired(entry, maxAge) {
-    return (Date.now() - entry.timestamp) > maxAge;
-  }
-
-  calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) *
-      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  }
-
-  cleanup() {
-    const now = Date.now();
-
-    // Cleanup immediate cache (5 seconds)
-    for (const [key, entry] of this.immediateCache.entries()) {
-      if (this.isExpired(entry, 5000)) {
-        this.immediateCache.delete(key);
-      }
-    }
-
-    // Cleanup proximity cache (30 seconds)
-    for (const [key, entry] of this.proximityCache.entries()) {
-      if (this.isExpired(entry, 30000)) {
-        this.proximityCache.delete(key);
-      }
-    }
-
-    // Cleanup session cache (5 minutes)
-    for (const [key, entry] of this.sessionCache.entries()) {
-      if (this.isExpired(entry, 300000)) {
-        this.sessionCache.delete(key);
-      }
-    }
-
-    // Cleanup area cache (1 hour)
-    for (const [key, entry] of this.areaCache.entries()) {
-      if (this.isExpired(entry, 3600000)) {
-        this.areaCache.delete(key);
-      }
-    }
-  }
-}
-
-// Smart request queue with priority handling and batching
-class SmartRequestQueue {
-  constructor() {
-    this.highPriorityQueue = [];
-    this.normalQueue = [];
-    this.lowPriorityQueue = [];
-    this.processing = false;
-    this.maxConcurrent = 8; // Increased from 5
-    this.activeRequests = 0;
-    this.requestDelay = 50; // Reduced from 100ms
-    this.lastProcessTime = 0;
-
-    // Start processing
-    this.startProcessing();
-  }
-
-  async enqueue(request) {
-    return new Promise((resolve, reject) => {
-      const queueItem = {
-        ...request,
-        resolve,
-        reject,
-        enqueuedAt: Date.now()
-      };
-
-      // Add to appropriate queue based on priority
-      switch (request.priority) {
-        case 'high':
-          this.highPriorityQueue.push(queueItem);
-          break;
-        case 'low':
-          this.lowPriorityQueue.push(queueItem);
-          break;
-        default:
-          this.normalQueue.push(queueItem);
-      }
-
-      // Check for duplicate requests and batch them
-      this.deduplicateRequests();
-    });
-  }
-
-  deduplicateRequests() {
-    // Combine similar location requests within 5 meters
-    const allQueues = [this.highPriorityQueue, this.normalQueue, this.lowPriorityQueue];
-
-    allQueues.forEach(queue => {
-      for (let i = 0; i < queue.length - 1; i++) {
-        for (let j = i + 1; j < queue.length; j++) {
-          const req1 = queue[i];
-          const req2 = queue[j];
-
-          if (req1.coordinates && req2.coordinates) {
-            const distance = this.calculateDistance(
-              req1.coordinates.latitude, req1.coordinates.longitude,
-              req2.coordinates.latitude, req2.coordinates.longitude
-            );
-
-            if (distance <= 5) { // Within 5 meters
-              // Mark as duplicate and will resolve with same result
-              req2.isDuplicate = true;
-              req2.originalRequest = req1;
-            }
-          }
-        }
-      }
-    });
-  }
-
-  calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371e3;
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) *
-      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  }
-
-  startProcessing() {
-    setInterval(() => {
-      this.processQueue();
-    }, this.requestDelay);
-  }
-
-  async processQueue() {
-    if (this.processing || this.activeRequests >= this.maxConcurrent) {
+// Enhanced geolocation with multiple attempts and validation
+function getCurrentPosition() {
+  return new Promise(async (resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation not supported by this browser'));
       return;
     }
 
-    // Process high priority first, then normal, then low
-    const request = this.getNextRequest();
-    if (!request) return;
-
-    this.processing = true;
-    this.activeRequests++;
-
-    try {
-      // Handle duplicate requests
-      if (request.isDuplicate && request.originalRequest) {
-        // Wait for original request to complete
-        // This is a simplified approach - in production, you'd want more sophisticated batching
-        request.resolve(await this.waitForOriginalRequest(request.originalRequest));
-        return;
-      }
-
-      const result = await this.processLocationRequest(request);
-      request.resolve(result);
-    } catch (error) {
-      request.reject(error);
-    } finally {
-      this.activeRequests--;
-      this.processing = false;
+    // Check if location services are likely disabled
+    if (!navigator.onLine) {
+      reject(new Error('Device appears to be offline'));
+      return;
     }
-  }
 
-  getNextRequest() {
-    if (this.highPriorityQueue.length > 0) {
-      return this.highPriorityQueue.shift();
-    }
-    if (this.normalQueue.length > 0) {
-      return this.normalQueue.shift();
-    }
-    if (this.lowPriorityQueue.length > 0) {
-      return this.lowPriorityQueue.shift();
-    }
-    return null;
-  }
+    let attempts = 0;
+    const maxAttempts = 3;
 
-  async processLocationRequest(request) {
-    // Use the enhanced location verification
-    return await locationManager.fallbackEngine.executeLocationVerification(request.coordinates);
-  }
+    const attemptLocation = () => {
+      attempts++;
 
-  async waitForOriginalRequest(originalRequest) {
-    // Simplified implementation - wait for original request to complete
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        if (originalRequest.completed) {
-          clearInterval(checkInterval);
-          resolve(originalRequest.result);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          // Validate position data
+          if (!position.coords ||
+            typeof position.coords.latitude !== 'number' ||
+            typeof position.coords.longitude !== 'number') {
+            if (attempts < maxAttempts) {
+              setTimeout(attemptLocation, 1000);
+              return;
+            }
+            reject(new Error('Invalid location data received'));
+            return;
+          }
+
+          // Check for obviously fake coordinates
+          if (position.coords.latitude === 0 && position.coords.longitude === 0) {
+            if (attempts < maxAttempts) {
+              setTimeout(attemptLocation, 1000);
+              return;
+            }
+            reject(new Error('Invalid coordinates detected'));
+            return;
+          }
+
+          resolve(position);
+        },
+        (error) => {
+          let message = 'Location access failed';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              message = 'Location permission denied. Please enable location access.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              message = 'Location unavailable. Please check GPS settings.';
+              break;
+            case error.TIMEOUT:
+              message = attempts < maxAttempts ? 'Location timeout, retrying...' : 'Location request timeout after multiple attempts';
+              break;
+          }
+
+          if (attempts < maxAttempts && error.code !== error.PERMISSION_DENIED) {
+            setTimeout(attemptLocation, 2000);
+            return;
+          }
+
+          reject(new Error(message));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: MAX_POSITION_AGE
         }
-      }, 100);
-    });
-  }
-
-  getQueueStatus() {
-    return {
-      high: this.highPriorityQueue.length,
-      normal: this.normalQueue.length,
-      low: this.lowPriorityQueue.length,
-      active: this.activeRequests,
-      total: this.highPriorityQueue.length + this.normalQueue.length + this.lowPriorityQueue.length
-    };
-  }
-}
-
-// Load balancer for multiple API keys
-class APILoadBalancer {
-  constructor() {
-    this.apiKeys = [
-      GOOGLE_MAPS_API_KEY, // Primary key
-      // Add additional API keys here for load distribution
-      // "AIzaSyC...", // Secondary key
-      // "AIzaSyD...", // Tertiary key
-    ];
-    this.keyUsage = new Map();
-    this.keyHealth = new Map();
-    this.currentKeyIndex = 0;
-
-    // Initialize key tracking
-    this.apiKeys.forEach(key => {
-      this.keyUsage.set(key, { requests: 0, errors: 0, lastUsed: 0 });
-      this.keyHealth.set(key, { available: true, rateLimitUntil: 0 });
-    });
-  }
-
-  getAvailableKey() {
-    const now = Date.now();
-
-    // Find the least used available key
-    let bestKey = null;
-    let lowestUsage = Infinity;
-
-    for (const key of this.apiKeys) {
-      const health = this.keyHealth.get(key);
-      const usage = this.keyUsage.get(key);
-
-      // Skip if rate limited
-      if (!health.available || now < health.rateLimitUntil) {
-        continue;
-      }
-
-      // Find key with lowest usage
-      if (usage.requests < lowestUsage) {
-        lowestUsage = usage.requests;
-        bestKey = key;
-      }
-    }
-
-    return bestKey || this.apiKeys[0]; // Fallback to primary key
-  }
-
-  reportUsage(key, success, responseTime, error = null) {
-    const usage = this.keyUsage.get(key);
-    const health = this.keyHealth.get(key);
-
-    if (usage) {
-      usage.requests++;
-      usage.lastUsed = Date.now();
-
-      if (!success) {
-        usage.errors++;
-
-        // Handle rate limit errors
-        if (error && error.message && error.message.includes('OVER_QUERY_LIMIT')) {
-          health.available = false;
-          health.rateLimitUntil = Date.now() + (60 * 1000); // 1 minute cooldown
-
-          // Auto-recover after cooldown
-          setTimeout(() => {
-            health.available = true;
-            health.rateLimitUntil = 0;
-          }, 60 * 1000);
-        }
-      }
-    }
-  }
-
-  getKeyStats() {
-    const stats = {};
-    for (const [key, usage] of this.keyUsage.entries()) {
-      const health = this.keyHealth.get(key);
-      stats[key.substr(-8)] = { // Show last 8 chars of key
-        requests: usage.requests,
-        errors: usage.errors,
-        available: health.available,
-        errorRate: usage.requests > 0 ? (usage.errors / usage.requests * 100).toFixed(1) + '%' : '0%'
-      };
-    }
-    return stats;
-  }
-}
-
-// Enhanced fallback engine with multiple strategies
-class FallbackEngine {
-  constructor() {
-    this.fallbackMethods = [
-      'googleMapsAPI',
-      'cachedProximity',
-      'nativeGeolocation',
-      'manualEntry'
-    ];
-  }
-
-  async executeLocationVerification(coordinates) {
-    const methods = [...this.fallbackMethods];
-    let lastError = null;
-
-    for (const method of methods) {
-      try {
-        const result = await this.executeMethod(method, coordinates);
-        if (result.success !== undefined) {
-          return { ...result, method };
-        }
-      } catch (error) {
-        console.warn(`Location method ${method} failed:`, error.message);
-        lastError = error;
-        continue;
-      }
-    }
-
-    throw lastError || new Error('All location verification methods failed');
-  }
-
-  async executeMethod(method, coordinates) {
-    switch (method) {
-      case 'googleMapsAPI':
-        return await this.verifyWithGoogleMaps(coordinates);
-
-      case 'cachedProximity':
-        return await this.verifyWithCache(coordinates);
-
-      case 'nativeGeolocation':
-        return await this.verifyWithNativeGeolocation(coordinates);
-
-      case 'manualEntry':
-        return await this.verifyWithManualEntry(coordinates);
-
-      default:
-        throw new Error(`Unknown verification method: ${method}`);
-    }
-  }
-
-  async verifyWithGoogleMaps(coordinates) {
-    // Try to load Google Maps API if not already loaded
-    if (!window.google || !window.google.maps || !window.google.maps.geometry) {
-      try {
-        console.log('Loading Google Maps API for enhanced location verification...');
-        await loadGoogleMapsAPI();
-
-        // Double-check after loading
-        if (!window.google || !window.google.maps || !window.google.maps.geometry) {
-          throw new Error('Google Maps API failed to initialize properly');
-        }
-      } catch (error) {
-        console.warn('Failed to load Google Maps API:', error.message);
-        throw new Error('Google Maps API not available');
-      }
-    }
-
-    const key = locationManager.loadBalancer.getAvailableKey();
-    const startTime = Date.now();
-
-    try {
-      const userLocation = new google.maps.LatLng(coordinates.latitude, coordinates.longitude);
-      const gnduLocation = new google.maps.LatLng(UNIVERSITY_LAT, UNIVERSITY_LNG);
-      const distance = google.maps.geometry.spherical.computeDistanceBetween(userLocation, gnduLocation);
-
-      locationManager.loadBalancer.reportUsage(key, true, Date.now() - startTime);
-
-      return {
-        success: distance <= ALLOWED_RADIUS_METERS,
-        distance: Math.round(distance),
-        accuracy: coordinates.accuracy || 0
-      };
-    } catch (error) {
-      locationManager.loadBalancer.reportUsage(key, false, Date.now() - startTime, error);
-      throw error;
-    }
-  }
-
-  async verifyWithCache(coordinates) {
-    // This would typically check a more sophisticated cache
-    // For now, we'll skip this method
-    throw new Error('No cached result available');
-  }
-
-  async verifyWithNativeGeolocation(coordinates) {
-    const distance = this.calculateHaversineDistance(
-      coordinates.latitude, coordinates.longitude,
-      UNIVERSITY_LAT, UNIVERSITY_LNG
-    );
-
-    return {
-      success: distance <= ALLOWED_RADIUS_METERS,
-      distance: Math.round(distance),
-      accuracy: coordinates.accuracy || 0
-    };
-  }
-
-  calculateHaversineDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lng2 - lng1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) *
-      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  }
-
-  async verifyWithManualEntry(coordinates) {
-    // This would show a manual location entry form
-    // For now, we'll use native calculation as fallback
-    return await this.verifyWithNativeGeolocation(coordinates);
-  }
-}
-
-// Performance monitoring and metrics collection
-class PerformanceMonitor {
-  constructor() {
-    this.metrics = {
-      totalRequests: 0,
-      successfulRequests: 0,
-      cacheHits: 0,
-      totalResponseTime: 0,
-      methodUsage: {
-        googleMapsAPI: 0,
-        cachedProximity: 0,
-        nativeGeolocation: 0,
-        manualEntry: 0
-      },
-      errors: new Map(),
-      requestHistory: []
+      );
     };
 
-    this.startTime = Date.now();
-  }
-
-  recordRequest(requestId, startTime) {
-    this.metrics.totalRequests++;
-  }
-
-  recordSuccess(requestId, responseTime, method) {
-    this.metrics.successfulRequests++;
-    this.metrics.totalResponseTime += responseTime;
-    this.metrics.methodUsage[method] = (this.metrics.methodUsage[method] || 0) + 1;
-
-    // Keep recent history for analysis
-    this.metrics.requestHistory.push({
-      requestId,
-      responseTime,
-      method,
-      timestamp: Date.now(),
-      success: true
-    });
-
-    // Keep only last 100 requests
-    if (this.metrics.requestHistory.length > 100) {
-      this.metrics.requestHistory.shift();
-    }
-  }
-
-  recordCacheHit(requestId) {
-    this.metrics.cacheHits++;
-  }
-
-  recordError(requestId, error) {
-    const errorType = error.name || 'UnknownError';
-    const count = this.metrics.errors.get(errorType) || 0;
-    this.metrics.errors.set(errorType, count + 1);
-
-    this.metrics.requestHistory.push({
-      requestId,
-      error: errorType,
-      timestamp: Date.now(),
-      success: false
-    });
-  }
-
-  getMetrics() {
-    const totalRequests = this.metrics.totalRequests;
-    const successfulRequests = this.metrics.successfulRequests;
-
-    return {
-      totalRequests,
-      successfulRequests,
-      successRate: totalRequests > 0 ? ((successfulRequests / totalRequests) * 100).toFixed(1) : '0',
-      averageResponseTime: successfulRequests > 0 ? Math.round(this.metrics.totalResponseTime / successfulRequests) : 0,
-      cacheHitRate: totalRequests > 0 ? ((this.metrics.cacheHits / totalRequests) * 100).toFixed(1) : '0',
-      methodUsage: this.metrics.methodUsage,
-      errors: Object.fromEntries(this.metrics.errors),
-      uptime: Date.now() - this.startTime
-    };
-  }
+    attemptLocation();
+  });
 }
 
-// Initialize the enhanced location management system
-const locationManager = new LocationManager();
+// Calculate distance between two coordinates using Haversine formula
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
 
-// Preload Google Maps API for better performance
-(async function preloadGoogleMapsAPI() {
-  try {
-    console.log('🗺️ Preloading Google Maps API for optimal performance...');
-    await loadGoogleMapsAPI();
-    console.log('✅ Google Maps API preloaded successfully');
-  } catch (error) {
-    console.warn('⚠️ Google Maps API preload failed, will load on-demand:', error.message);
-  }
-})();
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-// Legacy variables for backward compatibility
-let apiRequestQueue = [];
-let isProcessingQueue = false;
-let lastApiRequest = 0;
-const API_REQUEST_DELAY = 50; // Reduced from 100ms
-const MAX_CONCURRENT_REQUESTS = 8; // Increased from 5
-let activeRequests = 0;
+  return R * c;
+}
 
-// Traffic monitoring (legacy - now handled by PerformanceMonitor)
-let totalLocationRequests = 0;
-let successfulGoogleRequests = 0;
-let fallbackRequests = 0;
-let startTime = Date.now();
+// Simple performance tracking
+let locationRequestCount = 0;
+let locationSuccessCount = 0;
 
-// Enhanced performance monitoring with detailed metrics
-setInterval(() => {
-  if (typeof locationManager !== 'undefined') {
-    const metrics = locationManager.getPerformanceMetrics();
-    const queueStatus = locationManager.queue.getQueueStatus();
-    const keyStats = locationManager.loadBalancer.getKeyStats();
+// Simple performance monitoring
+// Note: logLocationPerformance function removed as it was not defined
 
-    if (metrics.totalRequests > 0) {
-      console.log(`📊 Enhanced Location Performance:`);
-      console.log(`   Requests: ${metrics.totalRequests} total, ${metrics.successRate}% success`);
-      console.log(`   Speed: ${metrics.averageResponseTime}ms avg response time`);
-      console.log(`   Cache: ${metrics.cacheHitRate}% hit rate`);
-      console.log(`   Queue: ${queueStatus.total} pending, ${queueStatus.active} active`);
-      console.log(`   Methods: Google ${metrics.methodUsage.googleMapsAPI || 0}, Native ${metrics.methodUsage.nativeGeolocation || 0}, Cached ${metrics.methodUsage.cachedProximity || 0}`);
-
-      // Show API key health if multiple keys
-      const keyCount = Object.keys(keyStats).length;
-      if (keyCount > 1) {
-        console.log(`   API Keys: ${keyCount} configured`);
-        Object.entries(keyStats).forEach(([key, stats]) => {
-          console.log(`     ${key}: ${stats.requests} requests, ${stats.errorRate} error rate, ${stats.available ? 'available' : 'rate limited'}`);
-        });
-      }
-    }
-  } else {
-    // Legacy logging
-    if (totalLocationRequests > 0) {
-      const successRate = ((successfulGoogleRequests / totalLocationRequests) * 100).toFixed(1);
-      const fallbackRate = ((fallbackRequests / totalLocationRequests) * 100).toFixed(1);
-      console.log(`📊 Location Stats: ${totalLocationRequests} total, ${successRate}% Google success, ${fallbackRate}% fallback used`);
-    }
-  }
-}, 30000); // Log every 30 seconds if there's activity
-
-// Add performance dashboard function for debugging
+// Simple performance dashboard for debugging
 window.showLocationPerformance = function () {
   if (typeof locationManager === 'undefined') {
-    console.log('Enhanced location system not initialized');
+    console.log('Location system not initialized');
     return;
   }
 
   const metrics = locationManager.getPerformanceMetrics();
-  const queueStatus = locationManager.queue.getQueueStatus();
-  const keyStats = locationManager.loadBalancer.getKeyStats();
 
-  console.log('🚀 Location System Performance Dashboard');
-  console.log('==========================================');
+  console.log('📍 Location System Performance');
+  console.log('==============================');
   console.log(`Total Requests: ${metrics.totalRequests}`);
   console.log(`Success Rate: ${metrics.successRate}%`);
-  console.log(`Average Response Time: ${metrics.averageResponseTime}ms`);
   console.log(`Cache Hit Rate: ${metrics.cacheHitRate}%`);
-  console.log(`System Uptime: ${Math.round(metrics.uptime / 1000)}s`);
-  console.log('');
-  console.log('Queue Status:');
-  console.log(`  High Priority: ${queueStatus.high}`);
-  console.log(`  Normal Priority: ${queueStatus.normal}`);
-  console.log(`  Low Priority: ${queueStatus.low}`);
-  console.log(`  Active Requests: ${queueStatus.active}`);
-  console.log('');
-  console.log('Method Usage:');
-  Object.entries(metrics.methodUsage).forEach(([method, count]) => {
-    if (count > 0) {
-      console.log(`  ${method}: ${count} requests`);
-    }
-  });
-  console.log('');
-  console.log('API Key Statistics:');
-  Object.entries(keyStats).forEach(([key, stats]) => {
-    console.log(`  Key ${key}:`);
-    console.log(`    Requests: ${stats.requests}`);
-    console.log(`    Error Rate: ${stats.errorRate}`);
-    console.log(`    Status: ${stats.available ? 'Available' : 'Rate Limited'}`);
-  });
-
-  if (Object.keys(metrics.errors).length > 0) {
-    console.log('');
-    console.log('Error Summary:');
-    Object.entries(metrics.errors).forEach(([error, count]) => {
-      console.log(`  ${error}: ${count} occurrences`);
-    });
-  }
+  console.log(`Errors: ${metrics.errors}`);
 };
 
 
@@ -825,6 +206,24 @@ let attendanceTime = {};
 let currentSession = null;
 let sessionSecretCode = '';
 let checkinUrl = '';
+
+// Smart URL generation for different environments
+function generateSessionUrl(sessionId) {
+  const baseUrl = window.location.href.split('?')[0];
+  
+  // Check if we're on localhost (Live Server) or a real domain
+  const isLocalhost = window.location.hostname === 'localhost' || 
+                     window.location.hostname === '127.0.0.1' || 
+                     window.location.hostname.includes('127.0.0.1');
+  
+  if (isLocalhost) {
+    // For Live Server, we need index.html in the path
+    return baseUrl.replace(/\/$/, '') + '/index.html?session=' + sessionId;
+  } else {
+    // For real domains, use the base URL without index.html
+    return baseUrl + '?session=' + sessionId;
+  }
+}
 
 // Wait for DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', function () {
@@ -1076,12 +475,7 @@ async function loadStudentsFromFirestore() {
   }
 }
 
-// Location checking variables - GNDU coordinates
-const UNIVERSITY_LAT = 31.634801;  // GNDU latitude
-const UNIVERSITY_LNG = 74.824416;  // GNDU longitude
-const ALLOWED_RADIUS_METERS = 200;  // 200 meters radius
-const REQUIRED_ACCURACY = 50;  // Maximum allowed accuracy in meters
-const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
+// Location checking variables are now defined above in the main configuration section
 
 // Cache for Firebase session requests to reduce load
 const sessionCache = new Map();
@@ -1090,68 +484,69 @@ const CACHE_DURATION = 30000; // 30 seconds
 // Debounce Firebase requests to prevent spam
 const firebaseRequestDebounce = new Map();
 
-// Load Google Maps API for enhanced location services with traffic management
-function loadGoogleMapsAPI() {
-  return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if (googleMapsLoaded || (window.google && window.google.maps && window.google.maps.geometry)) {
-      console.log('Google Maps API already loaded');
-      resolve();
-      return;
+// Enhanced location status display with progress
+function showLocationStatus(message, type = 'info', progress = null) {
+  const statusElement = document.getElementById('locationStatus');
+  if (statusElement) {
+    statusElement.textContent = message;
+    statusElement.className = `location-status ${type}`;
+
+    // Add progress indicator if provided
+    if (progress !== null) {
+      statusElement.setAttribute('data-progress', progress);
+    } else {
+      statusElement.removeAttribute('data-progress');
+    }
+  }
+
+  // Also log to console for debugging
+  console.log(`Location Status [${type}]: ${message}`);
+}
+
+// Store location attempts for security audit
+function storeLocationAttempt(locationData) {
+  try {
+    const attempts = JSON.parse(localStorage.getItem('locationAttempts') || '[]');
+
+    // Keep only last 10 attempts
+    if (attempts.length >= 10) {
+      attempts.shift();
     }
 
-    // Check if script is already loading
-    const existingScript = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (existingScript) {
-      console.log('Google Maps API script already loading, waiting...');
-      existingScript.addEventListener('load', () => {
-        googleMapsLoaded = true;
-        resolve();
-      });
-      existingScript.addEventListener('error', reject);
-      return;
+    attempts.push({
+      ...locationData,
+      timestamp: Date.now()
+    });
+
+    localStorage.setItem('locationAttempts', JSON.stringify(attempts));
+  } catch (error) {
+    console.warn('Failed to store location attempt:', error);
+  }
+}
+
+// Validate location against known patterns
+function validateLocationData(lat, lng, accuracy) {
+  // Check for common fake GPS patterns
+  const suspiciousPatterns = [
+    // Exact coordinates (likely spoofed)
+    { lat: 0, lng: 0 },
+    { lat: 37.7749, lng: -122.4194 }, // San Francisco default
+    { lat: 40.7128, lng: -74.0060 },  // New York default
+    { lat: 51.5074, lng: -0.1278 }    // London default
+  ];
+
+  for (const pattern of suspiciousPatterns) {
+    if (Math.abs(lat - pattern.lat) < 0.0001 && Math.abs(lng - pattern.lng) < 0.0001) {
+      throw new Error('Suspicious location detected');
     }
+  }
 
-    console.log('Loading Google Maps API...');
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry&loading=async&callback=initGoogleMaps`;
-    script.async = true;
-    script.defer = true;
+  // Check if accuracy is suspiciously perfect
+  if (accuracy < 1) {
+    console.warn('Unusually high GPS accuracy detected:', accuracy);
+  }
 
-    // Add global callback function
-    window.initGoogleMaps = () => {
-      googleMapsLoaded = true;
-      console.log('Google Maps API loaded successfully');
-      delete window.initGoogleMaps; // Clean up
-      resolve();
-    };
-
-    script.onload = () => {
-      // Fallback if callback doesn't fire
-      if (window.google && window.google.maps) {
-        googleMapsLoaded = true;
-        resolve();
-      }
-    };
-
-    script.onerror = (error) => {
-      console.error('Failed to load Google Maps API:', error);
-      delete window.initGoogleMaps; // Clean up
-      reject(new Error('Google Maps API failed to load'));
-    };
-
-    // Add timeout to prevent hanging
-    const timeout = setTimeout(() => {
-      console.error('Google Maps API loading timeout');
-      delete window.initGoogleMaps;
-      reject(new Error('Google Maps API loading timeout'));
-    }, 15000); // 15 second timeout
-
-    script.addEventListener('load', () => clearTimeout(timeout));
-    script.addEventListener('error', () => clearTimeout(timeout));
-
-    document.head.appendChild(script);
-  });
+  return true;
 }
 
 // Legacy queue system - now handled by LocationManager but kept for compatibility
@@ -1224,171 +619,119 @@ async function processRequestQueue() {
   }
 }
 
-// Enhanced location verification using the new LocationManager system
-async function checkUserLocationWithGoogle(retryCount = 0) {
-  const maxRetries = 2;
-
+// Comprehensive location verification function
+async function checkUserLocation() {
   try {
-    // Show initial status
-    showLocationStatus('📍 Getting your location with enhanced performance...', 'checking', true);
+    showLocationStatus('📍 Initializing location services...', 'checking', 10);
 
-    // Get current position with optimized settings
-    const position = await getCurrentPositionOptimized();
-    const { latitude, longitude, accuracy } = position.coords;
-
-    console.log(`Location obtained: ${latitude}, ${longitude}, accuracy: ${accuracy}m`);
-
-    // Validate coordinates
-    if (latitude === 0 && longitude === 0) {
-      throw new Error('Invalid coordinates (0,0)');
+    // Check if geolocation is supported
+    if (!navigator.geolocation) {
+      throw new Error('Geolocation is not supported by this browser');
     }
 
-    // Show queue status if there are pending requests
-    const queueStatus = locationManager.queue.getQueueStatus();
-    if (queueStatus.total > 0) {
-      showLocationStatus(`📍 Processing location... (${queueStatus.total} requests in queue)`, 'checking', true);
-    }
+    showLocationStatus('📡 Requesting GPS access...', 'checking', 30);
 
-    // Use the enhanced LocationManager for verification
-    const result = await locationManager.verifyLocation({
-      latitude,
-      longitude,
-      accuracy,
-      priority: retryCount > 0 ? 'high' : 'normal' // Higher priority for retries
-    });
+    const result = await verifyLocation();
 
-    const distanceRounded = Math.round(result.distance);
+    showLocationStatus('🔍 Validating location data...', 'checking', 70);
 
-    // Show appropriate status message
+    // Additional validation
+    validateLocationData(result.userLat, result.userLng, result.accuracy);
+
+    showLocationStatus('📏 Calculating distance to campus...', 'checking', 90);
+
     if (result.success) {
-      const cacheStatus = result.cached ? ' (cached)' : '';
-      const successMsg = `✅ Location verified! You're ${distanceRounded}m from GNDU (${result.method}${cacheStatus})`;
-      showLocationStatus(successMsg, 'allowed');
+      showLocationStatus(
+        `✅ Location verified! Distance: ${result.distance}m (Accuracy: ±${result.accuracy}m)`,
+        'allowed',
+        100
+      );
 
-      // Update legacy counters for compatibility
-      totalLocationRequests++;
-      if (result.method === 'googleMapsAPI') {
-        successfulGoogleRequests++;
-      } else {
-        fallbackRequests++;
-      }
+      // Store successful verification
+      localStorage.setItem('lastValidLocation', JSON.stringify({
+        timestamp: Date.now(),
+        distance: result.distance,
+        accuracy: result.accuracy
+      }));
 
       return {
         success: true,
-        distance: distanceRounded,
-        method: result.method,
-        cached: result.cached
+        distance: result.distance,
+        accuracy: result.accuracy,
+        coordinates: { lat: result.userLat, lng: result.userLng }
       };
     } else {
-      let statusMsg;
-      if (result.distance > 50000) {
-        statusMsg = `❌ You're ${Math.round(result.distance / 1000)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-      } else if (result.distance > 1000) {
-        statusMsg = `❌ You're ${(result.distance / 1000).toFixed(1)}km from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-      } else {
-        statusMsg = `❌ You're ${distanceRounded}m from GNDU campus. You must be within ${ALLOWED_RADIUS_METERS}m to mark attendance.`;
-      }
-
-      showLocationStatus(statusMsg, 'denied');
-
-      totalLocationRequests++;
-      if (result.method === 'googleMapsAPI') {
-        successfulGoogleRequests++;
-      } else {
-        fallbackRequests++;
-      }
+      showLocationStatus(
+        `❌ Location verification failed! Distance: ${result.distance}m (Max allowed: ${ALLOWED_RADIUS_METERS}m)`,
+        'denied'
+      );
 
       return {
         success: false,
-        distance: distanceRounded,
-        method: result.method,
-        cached: result.cached
+        distance: result.distance,
+        accuracy: result.accuracy,
+        reason: 'Outside allowed radius'
       };
     }
-
   } catch (error) {
-    console.error('Enhanced location verification failed:', error);
+    showLocationStatus(`❌ Location Error: ${error.message}`, 'error');
 
-    // Retry logic with exponential backoff
-    if (retryCount < maxRetries) {
-      const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 second delay
-      showLocationStatus(`Location error. Retrying in ${delay / 1000}s... (${retryCount + 1}/${maxRetries + 1})`, 'checking');
+    // Store failed attempt
+    storeLocationAttempt({
+      success: false,
+      error: error.message,
+      timestamp: Date.now()
+    });
 
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return checkUserLocationWithGoogle(retryCount + 1);
-    } else {
-      // Final fallback to basic geolocation
-      console.log('All enhanced methods failed, using basic fallback');
-      showLocationStatus('Using basic location verification...', 'checking');
-      return checkUserLocationFallback();
-    }
+    throw error;
   }
 }
 
-// Optimized geolocation function with better error handling
-function getCurrentPositionOptimized() {
-  return new Promise((resolve, reject) => {
-    // Adaptive timeout based on current system load
-    const queueStatus = locationManager.queue.getQueueStatus();
-    const baseTimeout = 8000;
-    const loadFactor = Math.min(queueStatus.total / 10, 2); // Max 2x timeout increase
-    const adaptiveTimeout = baseTimeout + (baseTimeout * loadFactor * 0.5);
+// Continuous location monitoring (optional)
+let locationWatcher = null;
 
-    const options = {
+function startLocationMonitoring() {
+  if (!navigator.geolocation) return;
+
+  locationWatcher = navigator.geolocation.watchPosition(
+    (position) => {
+      const distance = calculateDistance(
+        position.coords.latitude,
+        position.coords.longitude,
+        UNIVERSITY_LAT,
+        UNIVERSITY_LNG
+      );
+
+      if (distance > ALLOWED_RADIUS_METERS) {
+        showLocationStatus(`⚠️ You've moved ${Math.round(distance)}m from campus`, 'warning');
+      }
+    },
+    (error) => {
+      console.warn('Location monitoring error:', error);
+    },
+    {
       enableHighAccuracy: true,
-      timeout: adaptiveTimeout,
-      maximumAge: queueStatus.total > 5 ? 30000 : 15000 // Longer cache during high load
-    };
-
-    const handleSuccess = (position) => {
-      // Validate position data
-      if (!position || !position.coords) {
-        reject(new Error('Invalid position data'));
-        return;
-      }
-
-      const { latitude, longitude, accuracy } = position.coords;
-
-      // Basic coordinate validation
-      if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
-        latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-        reject(new Error('Invalid coordinates received'));
-        return;
-      }
-
-      // During high load, be more lenient with accuracy
-      const maxAccuracy = queueStatus.total > 10 ? 200 : 100;
-      if (accuracy > maxAccuracy) {
-        console.warn(`Low accuracy (${accuracy}m) but proceeding due to system load`);
-      }
-
-      resolve(position);
-    };
-
-    const handleError = (error) => {
-      let errorMessage = 'Location access failed';
-
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMessage = 'Location permission denied. Please enable location access.';
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMessage = 'Location information unavailable. Please try again.';
-          break;
-        case error.TIMEOUT:
-          errorMessage = 'Location request timed out. Please try again.';
-          break;
-        default:
-          errorMessage = error.message || 'Unknown location error';
-      }
-
-      reject(new Error(errorMessage));
-    };
-
-    // Get current position
-    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
-  });
+      timeout: 30000,
+      maximumAge: 60000
+    }
+  );
 }
+
+function stopLocationMonitoring() {
+  if (locationWatcher !== null) {
+    navigator.geolocation.clearWatch(locationWatcher);
+    locationWatcher = null;
+  }
+}
+
+// Get location history for debugging
+window.getLocationHistory = function () {
+  const attempts = JSON.parse(localStorage.getItem('locationAttempts') || '[]');
+  console.table(attempts);
+  return attempts;
+};
+
+
 
 // Cached session retrieval to reduce Firebase load
 async function getCachedSession(sessionId) {
@@ -3655,46 +2998,85 @@ function showLocationStatus(message, status, isLoading = false) {
   }
 }
 
-// Main location verification function - tries Google first with traffic management, then fallback
+// Main location verification function using native Geolocation API
 async function checkUserLocation(retryCount = 0) {
-  // Increment traffic counter
-  totalLocationRequests++;
-
-  // Check connection quality and adjust strategy
-  const quality = updateConnectionQuality();
+  locationRequestCount++;
 
   try {
-    console.log(`Starting location verification (connection: ${quality}, request #${totalLocationRequests})...`);
-
-    // For poor connections or high retry count, skip Google and go straight to fallback
-    if (quality === 'poor' || retryCount >= 2) {
-      console.log('Using fallback method due to connection quality or retry count');
-      fallbackRequests++;
-      return await checkUserLocationFallback(retryCount);
+    console.log(`Starting location verification (request #${locationRequestCount})...`);
+    
+    showLocationStatus('📍 Initializing location services...', 'checking', 10);
+    
+    // Check if geolocation is supported
+    if (!navigator.geolocation) {
+      throw new Error('Geolocation is not supported by this browser');
     }
-
-    // Try Google with timeout based on connection quality
-    const timeout = quality === 'slow' ? 6000 : 10000;
-    const result = await Promise.race([
-      checkUserLocationWithGoogle(retryCount),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Google verification timeout')), timeout)
-      )
-    ]);
-
-    // Count successful Google requests
-    if (result.method && result.method.includes('google')) {
-      successfulGoogleRequests++;
+    
+    showLocationStatus('📡 Requesting GPS access...', 'checking', 30);
+    
+    const result = await verifyLocation();
+    
+    showLocationStatus('🔍 Validating location data...', 'checking', 70);
+    
+    // Additional validation
+    validateLocationData(result.userLat, result.userLng, result.accuracy);
+    
+    showLocationStatus('📏 Calculating distance to campus...', 'checking', 90);
+    
+    if (result.success) {
+      showLocationStatus(
+        `✅ Location verified! Distance: ${result.distance}m (Accuracy: ±${result.accuracy}m)`, 
+        'allowed', 
+        100
+      );
+      
+      // Store successful verification
+      localStorage.setItem('lastValidLocation', JSON.stringify({
+        timestamp: Date.now(),
+        distance: result.distance,
+        accuracy: result.accuracy
+      }));
+      
+      locationSuccessCount++;
+      return { 
+        success: true, 
+        distance: result.distance, 
+        accuracy: result.accuracy,
+        coordinates: { lat: result.userLat, lng: result.userLng }
+      };
     } else {
-      fallbackRequests++;
+      showLocationStatus(
+        `❌ Location verification failed! Distance: ${result.distance}m (Max allowed: ${ALLOWED_RADIUS_METERS}m)`, 
+        'denied'
+      );
+      
+      return { 
+        success: false, 
+        distance: result.distance, 
+        accuracy: result.accuracy,
+        reason: 'Outside allowed radius'
+      };
     }
-
-    return result;
 
   } catch (error) {
-    console.error('Google location verification failed:', error.message);
-    fallbackRequests++;
-    return await checkUserLocationFallback(retryCount);
+    console.error('Location verification failed:', error.message);
+
+    if (retryCount < 2) {
+      showLocationStatus(`${error.message} Retrying... (${retryCount + 1}/3)`, 'checking');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return await checkUserLocation(retryCount + 1);
+    }
+
+    showLocationStatus(`❌ Location Error: ${error.message}`, 'error');
+    
+    // Store failed attempt
+    storeLocationAttempt({
+      success: false,
+      error: error.message,
+      timestamp: Date.now()
+    });
+    
+    return { success: false, error: error.message };
   }
 }
 
@@ -4350,7 +3732,7 @@ async function startAttendance() {
     attendanceTime = {};
   }
 
-  checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+  checkinUrl = generateSessionUrl(sessionId);
 
   const isExpired = isSessionExpired(currentSession);
   const sessionStatus = isNewSession ? 'New' : (isExpired ? 'Viewing Expired' : 'Continuing');
@@ -4423,7 +3805,7 @@ async function restartSession() {
     currentSession = newSession;
 
     // Keep the same checkin URL since session ID hasn't changed
-    checkinUrl = window.location.href.split('?')[0] + '?session=' + sessionId;
+    checkinUrl = generateSessionUrl(sessionId);
     document.getElementById('sessionUrl').textContent = checkinUrl;
 
     document.getElementById('classInfo').innerHTML = `
