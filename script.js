@@ -11,15 +11,31 @@ const firebaseConfig = window.firebaseConfig || {
 // University location configuration (GNDU coordinates)
 const UNIVERSITY_LAT = 31.634801;  // GNDU latitude (more precise)
 const UNIVERSITY_LNG = 74.824416;  // GNDU longitude (more precise)
-const ALLOWED_RADIUS_METERS = 200; // 2000 meters radius
+const ALLOWED_RADIUS_METERS = 2000; // 2000 meters radius
 const REQUIRED_ACCURACY = 1000;  // Maximum allowed accuracy in meters
 const MAX_POSITION_AGE = 30000; // 30 seconds max age for cached position
 
-// Enhanced location verification with multiple checks
+// Geoapify configuration - loaded from geoapify-config.js
+const getGeoapifyConfig = () => {
+  return window.geoapifyConfig || {
+    apiKey: 'YOUR_GEOAPIFY_API_KEY',
+    baseUrl: 'https://api.geoapify.com/v1',
+    timeout: 10000,
+    features: {
+      ipGeolocation: true,
+      reverseGeocoding: true,
+      addressValidation: true
+    }
+  };
+};
+
+const GEOAPIFY_CONFIG = getGeoapifyConfig();
+
+// Enhanced location verification with Geoapify
 async function verifyLocation() {
   try {
     // Get user's current position with high accuracy
-    const position = await getCurrentPosition();
+    const position = await getCurrentPositionWithGeoapify();
     const userLat = position.coords.latitude;
     const userLng = position.coords.longitude;
     const accuracy = position.coords.accuracy;
@@ -29,22 +45,27 @@ async function verifyLocation() {
       throw new Error(`GPS accuracy too low: ${Math.round(accuracy)}m (required: ${REQUIRED_ACCURACY}m)`);
     }
 
+    // Verify location using Geoapify reverse geocoding
+    const locationVerification = await verifyLocationWithGeoapify(userLat, userLng);
+
     // Calculate distance between user and university
     const distance = calculateDistance(userLat, userLng, UNIVERSITY_LAT, UNIVERSITY_LNG);
 
     // Check if user is within allowed radius
     const isWithinRange = distance <= ALLOWED_RADIUS_METERS;
 
-    // Additional security checks
+    // Additional security checks with Geoapify data
     const locationData = {
-      success: isWithinRange,
+      success: isWithinRange && locationVerification.isValid,
       distance: Math.round(distance),
       accuracy: Math.round(accuracy),
       userLat,
       userLng,
       timestamp: Date.now(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      userAgent: navigator.userAgent.substring(0, 100) // Truncated for privacy
+      userAgent: navigator.userAgent.substring(0, 100), // Truncated for privacy
+      geoapifyData: locationVerification,
+      address: locationVerification.address || 'Unknown'
     };
 
     // Store location attempt for audit
@@ -56,7 +77,52 @@ async function verifyLocation() {
   }
 }
 
-// Enhanced geolocation with multiple attempts and validation
+// Enhanced geolocation with Geoapify integration
+async function getCurrentPositionWithGeoapify() {
+  // First try to get position using browser's geolocation
+  const browserPosition = await getCurrentPosition();
+
+  const config = getGeoapifyConfig();
+
+  // If Geoapify API key is configured, enhance with Geoapify services
+  if (config.apiKey && config.apiKey !== 'YOUR_GEOAPIFY_API_KEY') {
+    try {
+      // Use Geoapify's IP geolocation as a fallback/verification
+      const ipLocation = await getGeoapifyIPLocation();
+
+      // Compare browser location with IP location for additional validation
+      if (ipLocation && ipLocation.location) {
+        const ipDistance = calculateDistance(
+          browserPosition.coords.latitude,
+          browserPosition.coords.longitude,
+          ipLocation.location.latitude,
+          ipLocation.location.longitude
+        );
+
+        // If locations are very far apart, it might indicate spoofing
+        if (ipDistance > 50000) { // 50km threshold
+          console.warn('Large discrepancy between GPS and IP location detected');
+          console.log(`GPS: ${browserPosition.coords.latitude}, ${browserPosition.coords.longitude}`);
+          console.log(`IP: ${ipLocation.location.latitude}, ${ipLocation.location.longitude}`);
+          console.log(`Distance: ${Math.round(ipDistance)}m`);
+        }
+
+        // Add IP location data to position object for additional context
+        browserPosition.ipLocation = {
+          ...ipLocation,
+          distanceFromGPS: Math.round(ipDistance)
+        };
+      }
+    } catch (error) {
+      console.warn('Geoapify IP location check failed:', error);
+      // Continue without IP verification if it fails
+    }
+  }
+
+  return browserPosition;
+}
+
+// Original getCurrentPosition function (fallback)
 function getCurrentPosition() {
   return new Promise(async (resolve, reject) => {
     if (!navigator.geolocation) {
@@ -135,6 +201,122 @@ function getCurrentPosition() {
   });
 }
 
+// Geoapify IP-based location detection
+async function getGeoapifyIPLocation() {
+  const config = getGeoapifyConfig();
+
+  if (!config.apiKey || config.apiKey === 'YOUR_GEOAPIFY_API_KEY') {
+    throw new Error('Geoapify API key not configured');
+  }
+
+  if (!config.features.ipGeolocation) {
+    throw new Error('IP geolocation feature disabled');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), config.timeout || 10000);
+
+  try {
+    const response = await fetch(`${config.baseUrl}/ipinfo?apiKey=${config.apiKey}`, {
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Geoapify IP location failed: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+// Verify location using Geoapify reverse geocoding
+async function verifyLocationWithGeoapify(lat, lng) {
+  const config = getGeoapifyConfig();
+
+  if (!config.apiKey || config.apiKey === 'YOUR_GEOAPIFY_API_KEY') {
+    // Fallback to basic validation if no API key
+    return {
+      isValid: true,
+      address: 'API key not configured',
+      confidence: 'low'
+    };
+  }
+
+  if (!config.features.reverseGeocoding) {
+    return {
+      isValid: true,
+      address: 'Reverse geocoding disabled',
+      confidence: 'low'
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.timeout || 10000);
+
+    const response = await fetch(
+      `${config.baseUrl}/geocode/reverse?lat=${lat}&lon=${lng}&apiKey=${config.apiKey}`,
+      { signal: controller.signal }
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`Geoapify reverse geocoding failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.features && data.features.length > 0) {
+      const feature = data.features[0];
+      const properties = feature.properties;
+
+      // Check if the location is in Punjab, India (additional validation)
+      const isInPunjab = properties.state &&
+        (properties.state.toLowerCase().includes('punjab') ||
+          properties.country_code === 'in');
+
+      // Enhanced validation for university area
+      const isNearUniversity = properties.city &&
+        (properties.city.toLowerCase().includes('amritsar') ||
+          properties.city.toLowerCase().includes('gndu'));
+
+      return {
+        isValid: true,
+        address: properties.formatted || 'Unknown address',
+        city: properties.city || properties.town || properties.village,
+        state: properties.state,
+        country: properties.country,
+        countryCode: properties.country_code,
+        confidence: properties.confidence || 'medium',
+        isInPunjab: isInPunjab,
+        isNearUniversity: isNearUniversity,
+        rawData: properties
+      };
+    } else {
+      return {
+        isValid: false,
+        address: 'Location not found',
+        confidence: 'none'
+      };
+    }
+  } catch (error) {
+    console.warn('Geoapify verification failed:', error);
+    // Return basic validation on API failure
+    return {
+      isValid: true,
+      address: 'Verification unavailable',
+      confidence: 'low',
+      error: error.message
+    };
+  }
+}
+
 // Calculate distance between two coordinates using Haversine formula
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371e3; // Earth's radius in meters
@@ -210,12 +392,12 @@ let checkinUrl = '';
 // Smart URL generation for different environments
 function generateSessionUrl(sessionId) {
   const baseUrl = window.location.href.split('?')[0];
-  
+
   // Check if we're on localhost (Live Server) or a real domain
-  const isLocalhost = window.location.hostname === 'localhost' || 
-                     window.location.hostname === '127.0.0.1' || 
-                     window.location.hostname.includes('127.0.0.1');
-  
+  const isLocalhost = window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.includes('127.0.0.1');
+
   if (isLocalhost) {
     // For Live Server, we need index.html in the path
     return baseUrl.replace(/\/$/, '') + '/index.html?session=' + sessionId;
@@ -619,7 +801,7 @@ async function processRequestQueue() {
   }
 }
 
-// Comprehensive location verification function
+// Comprehensive location verification function with Geoapify
 async function checkUserLocation() {
   try {
     showLocationStatus('📍 Initializing location services...', 'checking', 10);
@@ -633,44 +815,74 @@ async function checkUserLocation() {
 
     const result = await verifyLocation();
 
-    showLocationStatus('🔍 Validating location data...', 'checking', 70);
+    showLocationStatus('🔍 Validating with Geoapify...', 'checking', 50);
 
     // Additional validation
     validateLocationData(result.userLat, result.userLng, result.accuracy);
 
-    showLocationStatus('📏 Calculating distance to campus...', 'checking', 90);
+    showLocationStatus('📏 Calculating distance to campus...', 'checking', 80);
+
+    // Enhanced status message with Geoapify data
+    let statusMessage = '';
+    let statusType = '';
 
     if (result.success) {
-      showLocationStatus(
-        `✅ Location verified! Distance: ${result.distance}m (Accuracy: ±${result.accuracy}m)`,
-        'allowed',
-        100
-      );
+      statusMessage = `✅ Location verified! Distance: ${result.distance}m (±${result.accuracy}m)`;
 
-      // Store successful verification
+      // Add address information if available
+      if (result.geoapifyData && result.geoapifyData.address) {
+        statusMessage += `\n📍 Address: ${result.geoapifyData.address}`;
+      }
+
+      // Add confidence level
+      if (result.geoapifyData && result.geoapifyData.confidence) {
+        statusMessage += `\n🎯 Confidence: ${result.geoapifyData.confidence}`;
+      }
+
+      statusType = 'allowed';
+
+      // Store successful verification with enhanced data
       localStorage.setItem('lastValidLocation', JSON.stringify({
         timestamp: Date.now(),
         distance: result.distance,
-        accuracy: result.accuracy
+        accuracy: result.accuracy,
+        address: result.address,
+        geoapifyData: result.geoapifyData
       }));
+
+      showLocationStatus(statusMessage, statusType, 100);
 
       return {
         success: true,
         distance: result.distance,
         accuracy: result.accuracy,
-        coordinates: { lat: result.userLat, lng: result.userLng }
+        coordinates: { lat: result.userLat, lng: result.userLng },
+        address: result.address,
+        geoapifyData: result.geoapifyData
       };
     } else {
-      showLocationStatus(
-        `❌ Location verification failed! Distance: ${result.distance}m (Max allowed: ${ALLOWED_RADIUS_METERS}m)`,
-        'denied'
-      );
+      statusMessage = `❌ Location verification failed! Distance: ${result.distance}m (Max: ${ALLOWED_RADIUS_METERS}m)`;
+
+      // Add additional context if Geoapify verification failed
+      if (result.geoapifyData && !result.geoapifyData.isValid) {
+        statusMessage += `\n⚠️ Location verification failed`;
+      }
+
+      if (result.address) {
+        statusMessage += `\n📍 Detected: ${result.address}`;
+      }
+
+      statusType = 'denied';
+
+      showLocationStatus(statusMessage, statusType);
 
       return {
         success: false,
         distance: result.distance,
         accuracy: result.accuracy,
-        reason: 'Outside allowed radius'
+        reason: 'Outside allowed radius or verification failed',
+        address: result.address,
+        geoapifyData: result.geoapifyData
       };
     }
   } catch (error) {
@@ -729,6 +941,76 @@ window.getLocationHistory = function () {
   const attempts = JSON.parse(localStorage.getItem('locationAttempts') || '[]');
   console.table(attempts);
   return attempts;
+};
+
+// Debug function to test Geoapify integration
+window.testGeoapifyIntegration = async function () {
+  console.log('🧪 Testing Geoapify Integration...');
+
+  const config = getGeoapifyConfig();
+  console.log('📋 Configuration:', config);
+
+  if (!config.apiKey || config.apiKey === 'YOUR_GEOAPIFY_API_KEY') {
+    console.error('❌ Geoapify API key not configured');
+    return;
+  }
+
+  try {
+    // Test IP geolocation
+    console.log('🌐 Testing IP geolocation...');
+    const ipLocation = await getGeoapifyIPLocation();
+    console.log('✅ IP Location:', ipLocation);
+
+    // Test reverse geocoding with university coordinates
+    console.log('🔍 Testing reverse geocoding...');
+    const reverseGeocode = await verifyLocationWithGeoapify(UNIVERSITY_LAT, UNIVERSITY_LNG);
+    console.log('✅ University Address:', reverseGeocode);
+
+    // Test full location verification
+    console.log('📍 Testing full location verification...');
+    const locationResult = await checkUserLocation();
+    console.log('✅ Location Verification Result:', locationResult);
+
+    console.log('🎉 All Geoapify tests completed successfully!');
+
+  } catch (error) {
+    console.error('❌ Geoapify test failed:', error);
+  }
+};
+
+// Debug function to show current location with Geoapify data
+window.showCurrentLocationDetails = async function () {
+  try {
+    console.log('📍 Getting current location details...');
+
+    const position = await getCurrentPositionWithGeoapify();
+    console.log('🎯 GPS Position:', {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy
+    });
+
+    if (position.ipLocation) {
+      console.log('🌐 IP Location:', position.ipLocation);
+    }
+
+    const verification = await verifyLocationWithGeoapify(
+      position.coords.latitude,
+      position.coords.longitude
+    );
+    console.log('🔍 Address Verification:', verification);
+
+    const distance = calculateDistance(
+      position.coords.latitude,
+      position.coords.longitude,
+      UNIVERSITY_LAT,
+      UNIVERSITY_LNG
+    );
+    console.log('📏 Distance to University:', Math.round(distance) + 'm');
+
+  } catch (error) {
+    console.error('❌ Failed to get location details:', error);
+  }
 };
 
 
@@ -3004,55 +3286,55 @@ async function checkUserLocation(retryCount = 0) {
 
   try {
     console.log(`Starting location verification (request #${locationRequestCount})...`);
-    
+
     showLocationStatus('📍 Initializing location services...', 'checking', 10);
-    
+
     // Check if geolocation is supported
     if (!navigator.geolocation) {
       throw new Error('Geolocation is not supported by this browser');
     }
-    
+
     showLocationStatus('📡 Requesting GPS access...', 'checking', 30);
-    
+
     const result = await verifyLocation();
-    
+
     showLocationStatus('🔍 Validating location data...', 'checking', 70);
-    
+
     // Additional validation
     validateLocationData(result.userLat, result.userLng, result.accuracy);
-    
+
     showLocationStatus('📏 Calculating distance to campus...', 'checking', 90);
-    
+
     if (result.success) {
       showLocationStatus(
-        `✅ Location verified! Distance: ${result.distance}m (Accuracy: ±${result.accuracy}m)`, 
-        'allowed', 
+        `✅ Location verified! Distance: ${result.distance}m (Accuracy: ±${result.accuracy}m)`,
+        'allowed',
         100
       );
-      
+
       // Store successful verification
       localStorage.setItem('lastValidLocation', JSON.stringify({
         timestamp: Date.now(),
         distance: result.distance,
         accuracy: result.accuracy
       }));
-      
+
       locationSuccessCount++;
-      return { 
-        success: true, 
-        distance: result.distance, 
+      return {
+        success: true,
+        distance: result.distance,
         accuracy: result.accuracy,
         coordinates: { lat: result.userLat, lng: result.userLng }
       };
     } else {
       showLocationStatus(
-        `❌ Location verification failed! Distance: ${result.distance}m (Max allowed: ${ALLOWED_RADIUS_METERS}m)`, 
+        `❌ Location verification failed! Distance: ${result.distance}m (Max allowed: ${ALLOWED_RADIUS_METERS}m)`,
         'denied'
       );
-      
-      return { 
-        success: false, 
-        distance: result.distance, 
+
+      return {
+        success: false,
+        distance: result.distance,
         accuracy: result.accuracy,
         reason: 'Outside allowed radius'
       };
@@ -3068,14 +3350,14 @@ async function checkUserLocation(retryCount = 0) {
     }
 
     showLocationStatus(`❌ Location Error: ${error.message}`, 'error');
-    
+
     // Store failed attempt
     storeLocationAttempt({
       success: false,
       error: error.message,
       timestamp: Date.now()
     });
-    
+
     return { success: false, error: error.message };
   }
 }

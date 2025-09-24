@@ -5,9 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GNDU HUB</title>
-  <!-- Enhanced Content Security Policy for Google Maps and other services -->
+  <!-- Enhanced Content Security Policy for Geoapify and other services -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net https://maps.googleapis.com https://apis.google.com; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://maps.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net https://maps.googleapis.com https://apis.google.com; connect-src 'self' https://firestore.googleapis.com https://www.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://identitytoolkit.googleapis.com https://maps.googleapis.com https://cdn.jsdelivr.net https://api.geoapify.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://maps.gstatic.com https://maps.googleapis.com; font-src 'self' data:; object-src 'none'; base-uri 'self';">
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -625,6 +625,8 @@
   <!-- html2pdf bundle for Android-friendly PDF downloads -->
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
   <!-- Firebase configuration is now loaded from env.js -->
+  <!-- Load Geoapify configuration -->
+  <script src="geoapify-config.js"></script>
   <!-- Load student data -->
   <script src="student.js"></script>
   <!-- Load main script -->
