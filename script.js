@@ -1,11 +1,13 @@
-const firebaseConfig = window.firebaseConfig || {
-  apiKey: "AIzaSyCcn9HfE4RGoyNzR6pVJ9Lihg2jRXrRup8",
-  authDomain: "gndu-attendance-system.firebaseapp.com",
-  projectId: "gndu-attendance-system",
-  storageBucket: "gndu-attendance-system.firebasestorage.app",
-  messagingSenderId: "874240831454",
-  appId: "1:874240831454:web:aaaa1909d87d9a77e0f74f",
-  measurementId: "G-7TNPBZ3ZZN"
+import { students } from './student.js';
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // University location configuration (GNDU coordinates)
@@ -137,20 +139,7 @@ function getCurrentPosition() {
 
 
 // Calculate distance between two coordinates using Haversine formula
-function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371e3; // Earth's radius in meters
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lng2 - lng1) * Math.PI / 180;
 
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-}
 
 // Simple performance tracking
 let locationRequestCount = 0;
@@ -486,23 +475,7 @@ const CACHE_DURATION = 30000; // 30 seconds
 const firebaseRequestDebounce = new Map();
 
 // Enhanced location status display with progress
-function showLocationStatus(message, type = 'info', progress = null) {
-  const statusElement = document.getElementById('locationStatus');
-  if (statusElement) {
-    statusElement.textContent = message;
-    statusElement.className = `location-status ${type}`;
 
-    // Add progress indicator if provided
-    if (progress !== null) {
-      statusElement.setAttribute('data-progress', progress);
-    } else {
-      statusElement.removeAttribute('data-progress');
-    }
-  }
-
-  // Also log to console for debugging
-  console.log(`Location Status [${type}]: ${message}`);
-}
 
 // Store location attempts for security audit
 function storeLocationAttempt(locationData) {
@@ -621,82 +594,7 @@ async function processRequestQueue() {
 }
 
 // Main location verification function using native Geolocation API
-async function checkUserLocation(retryCount = 0) {
-  locationRequestCount++;
 
-  try {
-    console.log(`Starting location verification (request #${locationRequestCount})...`);
-
-    showLocationStatus('📍 Initializing location services...', 'checking', 10);
-
-    // Check if geolocation is supported
-    if (!navigator.geolocation) {
-      throw new Error('Geolocation is not supported by this browser');
-    }
-
-    showLocationStatus('📡 Requesting GPS access...', 'checking', 30);
-
-    const result = await verifyLocation();
-
-    showLocationStatus('📏 Calculating distance to campus...', 'checking', 80);
-
-    let statusMessage = '';
-    let statusType = '';
-
-    if (result.success) {
-      statusMessage = `✅ Location verified! Distance: ${result.distance}m (±${result.accuracy}m)`;
-      statusType = 'allowed';
-
-      // Store successful verification
-      localStorage.setItem('lastValidLocation', JSON.stringify({
-        timestamp: Date.now(),
-        distance: result.distance,
-        accuracy: result.accuracy
-      }));
-
-      showLocationStatus(statusMessage, statusType, 100);
-
-      return {
-        success: true,
-        distance: result.distance,
-        accuracy: result.accuracy,
-        coordinates: { lat: result.userLat, lng: result.userLng }
-      };
-    } else {
-      statusMessage = `❌ Location verification failed! Distance: ${result.distance}m (Max: ${ALLOWED_RADIUS_METERS}m)`;
-      statusType = 'denied';
-
-      showLocationStatus(statusMessage, statusType);
-
-      return {
-        success: false,
-        distance: result.distance,
-        accuracy: result.accuracy,
-        reason: 'Outside allowed radius'
-      };
-    }
-  } catch (error) {
-    console.error('Location verification failed:', error.message);
-
-    // Reduced retries for faster feedback
-    if (retryCount < 1) {
-      showLocationStatus(`${error.message} Retrying...`, 'checking');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return await checkUserLocation(retryCount + 1);
-    }
-
-    showLocationStatus(`❌ Location Error: ${error.message}`, 'error');
-
-    // Store failed attempt
-    storeLocationAttempt({
-      success: false,
-      error: error.message,
-      timestamp: Date.now()
-    });
-
-    return { success: false, error: error.message };
-  }
-}
 
 // Continuous location monitoring (optional)
 let locationWatcher = null;
@@ -1339,24 +1237,7 @@ function sortGuestStudents(data, attendance, attendanceTime) {
   return data.sort(compareValues(guestSortColumn, guestSortAsc));
 }
 
-function compareValues(key, asc) {
-  return function innerSort(a, b) {
-    if (!a.hasOwnProperty(key) || !b.hasOwnProperty(key)) {
-      return 0;
-    }
 
-    const varA = (typeof a[key] === 'string') ? a[key].toUpperCase() : a[key];
-    const varB = (typeof b[key] === 'string') ? b[key].toUpperCase() : b[key];
-
-    let comparison = 0;
-    if (varA > varB) {
-      comparison = 1;
-    } else if (varA < varB) {
-      comparison = -1;
-    }
-    return (asc) ? comparison : (comparison * -1);
-  };
-}
 
 // ---------------- Guest Student Details Functions ----------------
 function initializeGuestStudentDetails() {
@@ -6007,5 +5888,20 @@ window.submitAttendance = submitAttendance;
 window.copyLink = copyLink;
 window.shareWhatsApp = shareWhatsApp;
 window.handleLogout = handleLogout;
+window.logout = handleLogout;
+window.handleLogin = handleLogin;
+window.handleGuestLogin = handleGuestLogin;
+window.showTab = showTab;
+window.expireSessionManually = expireSessionManually;
+window.loadSubjectResources = loadSubjectResources;
+window.showResourceTab = showResourceTab;
+window.addResource = addResource;
+window.editDocument = editDocument;
+window.openDocument = openDocument;
+window.viewPDF = viewPDF;
+window.showGuestTab = showGuestTab;
+window.loadGuestAttendance = loadGuestAttendance;
+window.loadGuestSubjectResources = loadGuestSubjectResources;
+window.showGuestResourceTab = showGuestResourceTab;
 
 // Note: Firebase initialization is triggered once from the main DOMContentLoaded
