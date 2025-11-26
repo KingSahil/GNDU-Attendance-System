@@ -219,6 +219,29 @@ function generateSessionUrl(sessionId) {
 document.addEventListener('DOMContentLoaded', function () {
   // Secondary DOM ready handler for teacher dashboard wiring; avoid duplicate startup logs
 
+  // Bind Print Button with debouncing to prevent double-click
+  const printBtn = document.getElementById('printBtn');
+  if (printBtn) {
+    // Remove any existing listeners (by cloning) to avoid duplicates if this runs multiple times
+    const newBtn = printBtn.cloneNode(true);
+    printBtn.parentNode.replaceChild(newBtn, printBtn);
+
+    let printInProgress = false;
+    newBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (printInProgress) return; // Prevent concurrent clicks
+      printInProgress = true;
+
+      if (isAndroid()) {
+        downloadAttendancePdf().finally(() => { printInProgress = false; });
+      } else {
+        printAttendance();
+        // Reset after a delay to allow print dialog to open
+        setTimeout(() => { printInProgress = false; }, 2000);
+      }
+    });
+  }
+
   // Check for session or student view in URL first
   const urlParams = new URLSearchParams(window.location.search);
   const sessionId = urlParams.get('session');
@@ -4765,6 +4788,21 @@ async function exportToExcel() {
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A5568' } }; // gray-700
     headerRow.height = 20;
 
+    // Sort: Present students first, then by Roll Number (Same as PDF)
+    filtered.sort((a, b) => {
+      const isAPresent = !!attendance[a.id];
+      const isBPresent = !!attendance[b.id];
+
+      // Primary sort: Status (Present first)
+      if (isAPresent && !isBPresent) return -1;
+      if (!isAPresent && isBPresent) return 1;
+
+      // Secondary sort: Roll Number
+      const ra = getRollNumberById(a.id) || 0;
+      const rb = getRollNumberById(b.id) || 0;
+      return ra - rb;
+    });
+
     // Add data rows starting at row 5
     const startRow = headerRowIndex + 1;
     filtered.forEach((student, i) => {
@@ -4783,31 +4821,44 @@ async function exportToExcel() {
 
       // Row styling
       row.alignment = { vertical: 'middle' };
-      // Mimic UI: green-ish background for present rows
+
+      // Green highlight for present rows (Google Sheets compatible)
       if (isPresent) {
-        row.eachCell((cell, col) => {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFFAF0' } }; // light green tint
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFDFF0D8' } // Light green
+          };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            left: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            bottom: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            right: { style: 'thin', color: { argb: 'FFAAAAAA' } }
+          };
+        });
+      } else {
+        // Explicit white background for absent rows to ensure clean look
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFFFFFF' } // White
+          };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            left: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            bottom: { style: 'thin', color: { argb: 'FFAAAAAA' } },
+            right: { style: 'thin', color: { argb: 'FFAAAAAA' } }
+          };
         });
       }
+
       // Status cell color coding
       const statusCell = ws.getCell(rowIndex, 5);
-      statusCell.font = { bold: true, color: { argb: isPresent ? 'FF1F7A1F' : 'FFB00020' } };
+      statusCell.font = { bold: true, color: { argb: isPresent ? 'FF006400' : 'FFB00020' } }; // Dark Green / Red
       statusCell.alignment = { horizontal: 'center' };
     });
-
-    // Borders for table area
-    const lastRow = startRow + filtered.length - 1;
-    for (let r = headerRowIndex; r <= lastRow; r++) {
-      for (let c = 1; c <= 6; c++) {
-        const cell = ws.getCell(r, c);
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFAAAAAA' } },
-          left: { style: 'thin', color: { argb: 'FFAAAAAA' } },
-          bottom: { style: 'thin', color: { argb: 'FFAAAAAA' } },
-          right: { style: 'thin', color: { argb: 'FFAAAAAA' } }
-        };
-      }
-    }
 
     // Freeze header (no autofilter to avoid filter arrows)
     ws.views = [{ state: 'frozen', ySplit: headerRowIndex }];
@@ -4830,7 +4881,7 @@ async function exportToExcel() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   } catch (err) {
-
+    console.error('Excel export failed:', err);
     alert('Failed to export Excel file. Please try again.');
   }
 }
@@ -4839,35 +4890,62 @@ async function exportToExcel() {
 function isAndroid() {
   return /Android/i.test(navigator.userAgent || '');
 }
-
 // Generate and download a PDF of the current view (Android-friendly)
+let isPdfGenerating = false; // Flag to prevent double downloads
+
 async function downloadAttendancePdf() {
+  if (isPdfGenerating) return;
+  isPdfGenerating = true;
+
   try {
     if (typeof html2pdf === 'undefined') {
-      // Fallback if library missing
+      console.warn('html2pdf not loaded, falling back to print');
       printAttendance();
       return;
     }
 
+    // Show loading indicator
+    const btn = document.getElementById('printBtn');
+    if (btn) btn.innerHTML = '⏳ Generating...';
+
     const filtered = applyFilters();
+
+    // Sort: Present students first, then by Roll Number
+    filtered.sort((a, b) => {
+      const isAPresent = !!attendance[a.id];
+      const isBPresent = !!attendance[b.id];
+
+      // Primary sort: Status (Present first)
+      if (isAPresent && !isBPresent) return -1;
+      if (!isAPresent && isBPresent) return 1;
+
+      // Secondary sort: Roll Number
+      const ra = getRollNumberById(a.id) || 0;
+      const rb = getRollNumberById(b.id) || 0;
+      return ra - rb;
+    });
+
     const dateStr = new Date().toISOString().slice(0, 10);
     const title = 'GNDU Attendance';
 
-    // Build a printable container
+    // Build a printable container (Light mode for better printability)
     const container = document.createElement('div');
-    container.style.padding = '16px';
+    container.style.padding = '0px'; // No padding to avoid white space
     container.style.fontFamily = 'Arial, Helvetica, sans-serif';
     container.style.color = '#000';
+    container.style.background = '#fff';
 
     const h1 = document.createElement('h1');
     h1.textContent = title;
     h1.style.fontSize = '18px';
     h1.style.margin = '0 0 8px';
+    h1.style.color = '#000';
     container.appendChild(h1);
 
     const meta = document.createElement('div');
     meta.style.fontSize = '12px';
     meta.style.margin = '0 0 12px';
+    meta.style.color = '#333';
     const sessionBits = [];
     if (currentSession) {
       if (currentSession.date) sessionBits.push(`Date: ${currentSession.date}`);
@@ -4882,6 +4960,7 @@ async function downloadAttendancePdf() {
     table.style.width = '100%';
     table.style.borderCollapse = 'collapse';
     table.style.fontSize = '11px';
+    table.style.background = '#fff';
 
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
@@ -4889,10 +4968,11 @@ async function downloadAttendancePdf() {
     headers.forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
-      th.style.border = '1px solid #333';
+      th.style.border = '1px solid #000';
       th.style.padding = '6px';
       th.style.textAlign = 'left';
-      th.style.background = '#f0f0f0';
+      th.style.background = '#e8e8e8';
+      th.style.color = '#000';
       trh.appendChild(th);
     });
     thead.appendChild(trh);
@@ -4913,17 +4993,31 @@ async function downloadAttendancePdf() {
       cells.forEach((text, idx) => {
         const td = document.createElement('td');
         td.textContent = text;
-        td.style.border = '1px solid #333';
+        td.style.border = '1px solid #000';
         td.style.padding = '6px';
         td.style.verticalAlign = 'top';
-        if (idx === 4) { // Status column styling for better contrast
+        td.style.color = '#000'; // Black text for all cells
+
+        if (idx === 4) { // Status column
           td.style.fontWeight = '700';
-          td.style.color = isPresent ? '#0a5a0a' : '#b00020';
+          if (isPresent) {
+            td.style.color = '#1b5e20'; // Dark green for present
+          } else {
+            td.style.color = '#c62828'; // Dark red for absent
+          }
           td.style.textAlign = 'left';
         }
         tr.appendChild(td);
       });
-      if (isPresent) tr.style.background = '#dff0d8'; // darker success background
+
+      // Row background
+      if (isPresent) {
+        tr.style.background = '#c8e6c9'; // Light green background
+        tr.style.color = '#000';
+      } else {
+        tr.style.background = '#ffffff'; // White for absent
+        tr.style.color = '#000';
+      }
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -4934,25 +5028,47 @@ async function downloadAttendancePdf() {
     const fileName = `attendance${subjectPart}_${dateStr}.pdf`;
 
     const opt = {
-      margin: [10, 10, 10, 10],
+      margin: [2, 10, 10, 10], // Reduced top margin to 2mm
       filename: fileName,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
 
     // Use html2pdf to save
     await html2pdf().from(container).set(opt).save();
   } catch (e) {
-
+    console.error('PDF generation failed:', e);
+    alert('PDF generation failed. Falling back to standard print.');
     // Fallback to print
     try { printAttendance(); } catch (_) { }
+  } finally {
+    isPdfGenerating = false;
+    // Restore button text
+    const btn = document.getElementById('printBtn');
+    if (btn) btn.innerHTML = '🖨️ Print';
   }
 }
 
 // Print the currently visible table data
 function printAttendance() {
   const filtered = applyFilters();
+
+  // Sort: Present students first, then by Roll Number (Same as PDF)
+  filtered.sort((a, b) => {
+    const isAPresent = !!attendance[a.id];
+    const isBPresent = !!attendance[b.id];
+
+    // Primary sort: Status (Present first)
+    if (isAPresent && !isBPresent) return -1;
+    if (!isAPresent && isBPresent) return 1;
+
+    // Secondary sort: Roll Number
+    const ra = getRollNumberById(a.id) || 0;
+    const rb = getRollNumberById(b.id) || 0;
+    return ra - rb;
+  });
+
   const dateStr = new Date().toLocaleString();
   let html = '';
   html += '<!DOCTYPE html><html><head><title>Attendance Print</title>';
@@ -4993,7 +5109,7 @@ function printAttendance() {
       '</tr>';
   });
   html += '</tbody></table>';
-  html += '<script>window.addEventListener("afterprint", function(){ setTimeout(function(){ window.close && window.close(); }, 0); });<\/script>';
+  html += '<script>window.addEventListener("afterprint", function(){ setTimeout(function(){ window.close && window.close(); }, 0); });<\\/script>';
   html += '</body></html>';
   // Android-safe print via hidden iframe
   const iframe = document.createElement('iframe');
@@ -5009,7 +5125,12 @@ function printAttendance() {
     try { document.body.removeChild(iframe); } catch (_) { }
   };
 
+  let printTriggered = false; // Flag to prevent double print
+
   const triggerPrint = () => {
+    if (printTriggered) return; // Prevent double execution
+    printTriggered = true;
+
     try {
       const win = iframe.contentWindow || iframe;
       // Delay slightly to ensure layout/render is complete
