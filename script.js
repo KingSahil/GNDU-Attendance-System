@@ -4928,23 +4928,23 @@ async function downloadAttendancePdf() {
     const dateStr = new Date().toISOString().slice(0, 10);
     const title = 'GNDU Attendance';
 
-    // Build a printable container (Light mode for better printability)
+    // Build a printable container
     const container = document.createElement('div');
-    container.style.padding = '0px'; // No padding to avoid white space
+    container.style.padding = '0px';
     container.style.fontFamily = 'Arial, Helvetica, sans-serif';
     container.style.color = '#000';
     container.style.background = '#fff';
 
     const h1 = document.createElement('h1');
     h1.textContent = title;
-    h1.style.fontSize = '18px';
-    h1.style.margin = '0 0 8px';
+    h1.style.fontSize = '14px';
+    h1.style.margin = '0 0 5px';
     h1.style.color = '#000';
     container.appendChild(h1);
 
     const meta = document.createElement('div');
-    meta.style.fontSize = '12px';
-    meta.style.margin = '0 0 12px';
+    meta.style.fontSize = '9px';
+    meta.style.margin = '0 0 8px';
     meta.style.color = '#333';
     const sessionBits = [];
     if (currentSession) {
@@ -4959,20 +4959,21 @@ async function downloadAttendancePdf() {
     const table = document.createElement('table');
     table.style.width = '100%';
     table.style.borderCollapse = 'collapse';
-    table.style.fontSize = '11px';
+    table.style.fontSize = '7px';
     table.style.background = '#fff';
 
     const thead = document.createElement('thead');
     const trh = document.createElement('tr');
-    const headers = ['Roll Number', 'Student ID', 'Name', "Father's Name", 'Status', 'Check-in Time'];
+    const headers = ['Roll', 'ID', 'Name', "Father's Name", 'Status', 'Time'];
     headers.forEach(h => {
       const th = document.createElement('th');
       th.textContent = h;
       th.style.border = '1px solid #000';
-      th.style.padding = '6px';
+      th.style.padding = '3px';
       th.style.textAlign = 'left';
       th.style.background = '#e8e8e8';
       th.style.color = '#000';
+      th.style.fontSize = '7px';
       trh.appendChild(th);
     });
     thead.appendChild(trh);
@@ -4994,28 +4995,28 @@ async function downloadAttendancePdf() {
         const td = document.createElement('td');
         td.textContent = text;
         td.style.border = '1px solid #000';
-        td.style.padding = '6px';
+        td.style.padding = '2px';
         td.style.verticalAlign = 'top';
-        td.style.color = '#000'; // Black text for all cells
+        td.style.color = '#000';
+        td.style.fontSize = '7px';
 
-        if (idx === 4) { // Status column
+        if (idx === 4) {
           td.style.fontWeight = '700';
           if (isPresent) {
-            td.style.color = '#1b5e20'; // Dark green for present
+            td.style.color = '#1b5e20';
           } else {
-            td.style.color = '#c62828'; // Dark red for absent
+            td.style.color = '#c62828';
           }
           td.style.textAlign = 'left';
         }
         tr.appendChild(td);
       });
 
-      // Row background
       if (isPresent) {
-        tr.style.background = '#c8e6c9'; // Light green background
+        tr.style.background = '#c8e6c9';
         tr.style.color = '#000';
       } else {
-        tr.style.background = '#ffffff'; // White for absent
+        tr.style.background = '#ffffff';
         tr.style.color = '#000';
       }
       tbody.appendChild(tr);
@@ -5023,28 +5024,34 @@ async function downloadAttendancePdf() {
     table.appendChild(tbody);
     container.appendChild(table);
 
-    // Prepare filename
     const subjectPart = currentSession?.subjectCode ? `_${currentSession.subjectCode}` : '';
     const fileName = `attendance${subjectPart}_${dateStr}.pdf`;
 
     const opt = {
-      margin: [2, 10, 10, 10], // Reduced top margin to 2mm
+      margin: [2, 5, 5, 5],
       filename: fileName,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowHeight: document.body.scrollHeight * 2
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a3',
+        orientation: 'landscape'
+      },
+      pagebreak: { mode: 'avoid-all' }
     };
 
-    // Use html2pdf to save
     await html2pdf().from(container).set(opt).save();
   } catch (e) {
     console.error('PDF generation failed:', e);
     alert('PDF generation failed. Falling back to standard print.');
-    // Fallback to print
     try { printAttendance(); } catch (_) { }
   } finally {
     isPdfGenerating = false;
-    // Restore button text
     const btn = document.getElementById('printBtn');
     if (btn) btn.innerHTML = '🖨️ Print';
   }
